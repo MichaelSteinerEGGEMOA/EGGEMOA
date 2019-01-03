@@ -1,4 +1,0 @@
-[submodule "MichaelSteinerEGGEMOA/EGGEMOA"]
-	path = MichaelSteinerEGGEMOA/EGGEMOA
-	url = git@github.com:MichaelSteinerEGGEMOA/EGGEMOA.git
-	branch = master
