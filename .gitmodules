@@ -1,0 +1,4 @@
+[submodule "submodules"]
+	path = submodules
+	url = git@github.com:MichaelSteinerEGGEMOA/EGGEMOA.git
+	branch = Test
