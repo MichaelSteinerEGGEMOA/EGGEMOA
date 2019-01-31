@@ -52,7 +52,7 @@
                     <DatiTrasmissione>
                         <IdTrasmittente>
                             <IdPaese t-esc="get_vat_country(record.company_id.vat)"/>
-                            <IdCodice t-esc="get_vat_number(record.company_id.vat)"/>
+                            <IdCodice t-esc="record.company_id.l10n_it_codice_fiscale"/>
                         </IdTrasmittente>
                         <ProgressivoInvio t-esc="record.number.replace('/','')[-10:]"/>
                         <FormatoTrasmissione t-esc="formato_trasmissione"/>
