@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+    <record id="product_template_common_form_view_inherit" model="ir.ui.view">
+        <field name="name">invoice_it_template_inherit</field>
+        <field name="inherit_id" ref="l10n_it_edi.account_invoice_line_it_FatturaPA"/>
+        <field name="arch" type="xml">
+            <xpath expr="//Quantita" position="replace">
+                <Quantita t-esc="format_numbers(line.product_cw_uom_qty)"/>
+            </xpath>
+
+            <!-- product_cw_uom_qty -->
+
+            <!-- <xpath expr="//DettaglioLinee/PrezzoUnitario" position="replace">
+                <PrezzoUnitario t-esc="format_monetary(taxes['total_excluded'], currency)"/>
+            </xpath>
+
+            <xpath expr="//DettaglioLinee/PrezzoTotale" position="replace">
+                <PrezzoTotale t-esc="format_monetary(line.price_subtotal, currency)"/>
+            </xpath> -->
+        </field>
+    </record>
+</odoo>
