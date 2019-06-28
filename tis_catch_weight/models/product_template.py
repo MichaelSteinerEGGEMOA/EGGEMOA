@@ -10,7 +10,6 @@ class ProductTemplateCWUOM(models.Model):
     
     cw_uom_id = fields.Many2one('uom.uom', string="Catch Weight UOM",
                                     default=_default_cw_uom)
-
     sale_price_base = fields.Selection([('uom','UOM'),('cwuom','CW-UOM')], string="Sale Price Base")
     purchase_price_base = fields.Selection([('uom','UOM'),('cwuom','CW-UOM')], string="Purchase Price Base")
     

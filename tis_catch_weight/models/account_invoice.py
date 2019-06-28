@@ -53,4 +53,33 @@ class AccountInvoiceCWUOM(models.Model):
                     'product_cw_uom': line.product_cw_uom.id,
                     })
         return res
-        
+
+    @api.multi
+    def get_taxes_values(self):
+        if not self.env.user.has_group('tis_catch_weight.group_catch_weight'):
+            return super(AccountInvoiceCWUOM, self).get_taxes_values()
+        tax_grouped = {}
+        round_curr = self.currency_id.round
+        for line in self.invoice_line_ids:
+            if line.invoice_id.type in ['in_invoice', 'in_refund'] and line.product_id.purchase_price_base == 'cwuom':
+                quantity = line.product_cw_uom_qty
+            elif line.invoice_id.type in ['out_invoice', 'out_refund'] and line.product_id.sale_price_base == 'cwuom':
+                quantity = line.product_cw_uom_qty
+            else:
+                quantity = line.quantity
+            if not line.account_id:
+                continue
+            price_unit = line.price_unit * (1 - (line.discount or 0.0) / 100.0)
+            taxes = line.invoice_line_tax_ids.compute_all(price_unit, self.currency_id, quantity, line.product_id,
+                                                          self.partner_id)['taxes']
+            for tax in taxes:
+                val = self._prepare_tax_line_vals(line, tax)
+                key = self.env['account.tax'].browse(tax['id']).get_grouping_key(val)
+
+                if key not in tax_grouped:
+                    tax_grouped[key] = val
+                    tax_grouped[key]['base'] = round_curr(val['base'])
+                else:
+                    tax_grouped[key]['amount'] += val['amount']
+                    tax_grouped[key]['base'] += round_curr(val['base'])
+        return tax_grouped

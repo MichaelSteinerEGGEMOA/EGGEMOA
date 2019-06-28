@@ -2,14 +2,14 @@
 # Copyright (C) 2017-Today  Technaureus Info Solutions(<http://technaureus.com/>).
 {
     'name': 'Catch Weight Management',
-    'version': '1.0',
+    'version': '12.0.0.4',
     'sequence': 1,
     'category': 'Sales',
     'summary': 'Catch Weight Management',
     'description': """
     This module is for activating Catch weight management
 """,
-    'author': 'Technaureus Info Solutions',
+    'author': 'Technaureus Info Solutions Pvt. Ltd.',
     'website': 'http://www.technaureus.com/',
     'price': 130,
     'currency': 'EUR',

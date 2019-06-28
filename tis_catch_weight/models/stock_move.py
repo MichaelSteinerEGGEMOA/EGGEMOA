@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2017-Today  Technaureus Info Solutions(<http://technaureus.com/>).
 from odoo import models, fields, api, _
+from odoo.exceptions import UserError, ValidationError
 
 class StockMoveCWUOM(models.Model):
     _inherit = 'stock.move'
@@ -26,17 +27,24 @@ class StockMoveCWUOM(models.Model):
     def _quantity_done_set(self):
         if not self.env.user.has_group('tis_catch_weight.group_catch_weight'):
             return super(StockMoveCWUOM, self)._quantity_done_set()
-            
-        quantity_done = self[0].quantity_done  
+
+        quantity_done = self[0].quantity_done
         cw_quantity_done = self[0].cw_qty_done
         for move in self:
             move_lines = move._get_move_lines()
+
             if not move_lines:
                 if quantity_done and cw_quantity_done:
-                    move_line = self.env['stock.move.line'].create(dict(move._prepare_move_line_vals(), qty_done=quantity_done, cw_qty_done=cw_quantity_done))
+                    move_line = self.env['stock.move.line'].create(
+                        dict(move._prepare_move_line_vals(), qty_done=quantity_done, cw_qty_done=cw_quantity_done))
+                    move.write({'move_line_ids': [(4, move_line.id)]})
+                elif quantity_done and not cw_quantity_done:
+                    move_line = self.env['stock.move.line'].create(
+                        dict(move._prepare_move_line_vals(), qty_done=quantity_done))
                     move.write({'move_line_ids': [(4, move_line.id)]})
                 elif cw_quantity_done:
-                    move_line = self.env['stock.move.line'].create(dict(move._prepare_move_line_vals(), cw_qty_done=cw_quantity_done))
+                    move_line = self.env['stock.move.line'].create(
+                        dict(move._prepare_move_line_vals(), cw_qty_done=cw_quantity_done))
                     move.write({'move_line_ids': [(4, move_line.id)]})
             elif len(move_lines) == 1:
                 move_lines[0].qty_done = quantity_done
