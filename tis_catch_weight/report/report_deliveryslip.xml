@@ -2,7 +2,7 @@
 <odoo>
 	<template id="report_delivery_catchweight" inherit_id="stock.report_delivery_document">
 		<xpath expr="//table[2]/thead/tr/th[2]" position="after">
-			<th width="10%" class="text-right" groups="tis_catch_weight.group_catch_weight">CW Quantity</th>	
+			<th width="10%" class="text-right" groups="tis_catch_weight.group_catch_weight">CW Qty</th>
 		</xpath>
 		<xpath expr="//table[2]/tbody/tr/td[2]" position="after">
 			<td class="text-right" groups="tis_catch_weight.group_catch_weight">
@@ -11,12 +11,12 @@
 			</td>
 		</xpath>
 		<xpath expr="//table[3]/thead/tr/th[3]" position="after">
-			<th width="10%" class="text-right" groups="tis_catch_weight.group_catch_weight">CW Quantity</th>	
+			<th width="10%" class="text-right" groups="tis_catch_weight.group_catch_weight">CW Qty</th>
 		</xpath>
-		<xpath expr="//table[3]/tbody/tr/td[4]" position="after">
+		<xpath expr="//table[3]/tbody/tr/td[3]" position="after">
 			<td class="text-right" groups="tis_catch_weight.group_catch_weight">
-				<span t-field="move_line.product_cw_uom_qty"/>
-                <span t-field="move_line.product_cw_uom"/>
+				<span t-field="move_line.move_id.product_cw_uom_qty"/>
+                <span t-field="move_line.move_id.product_cw_uom"/>
 			</td>
 		</xpath>
 	</template>
