@@ -15,5 +15,5 @@ class AccountInvoiceReport(models.Model):
         return super(AccountInvoiceReport, self)._select() + ", sub.product_cw_qty"
 
     def _sub_select(self):
-        return super(AccountInvoiceReport,self)._sub_select() + \
+        return super(AccountInvoiceReport, self)._sub_select() + \
                ", SUM ((invoice_type.sign_qty * ail.product_cw_uom_qty) / u.factor * u2.factor) AS product_cw_qty"

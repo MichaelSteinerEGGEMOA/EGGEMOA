@@ -9,7 +9,6 @@ import operator as py_operator
 from datetime import datetime, timedelta, time
 from . import catch_weight
 
-
 OPERATORS = {
     '<': py_operator.lt,
     '>': py_operator.gt,
@@ -23,10 +22,9 @@ OPERATORS = {
 class ProductProduct(models.Model):
     _inherit = 'product.product'
 
-    product_cw_uom = fields.Many2one('uom.uom', string='CW-UOM',related='product_tmpl_id.cw_uom_id')
+    product_cw_uom = fields.Many2one('uom.uom', string='CW-UOM', related='product_tmpl_id.cw_uom_id')
     cw_sales_count = fields.Float(compute='_compute_cw_sales_count', string='CW Sold')
     cw_purchased_product_qty = fields.Float(compute='_compute_purchased_product_cw_qty', string='CW Purchased')
-    cw_mrp_product_qty = fields.Float('CW Manufactured', compute='_compute_mrp_product_cw_qty')
     cw_qty_available = fields.Float(
         'CW Quantity On Hand', compute='_compute_cw_quantities', search='_search_cw_qty_available',
         digits=dp.get_precision('Product CW Unit of Measure'))
@@ -58,6 +56,8 @@ class ProductProduct(models.Model):
         cw_domain_quant_loc, cw_domain_move_in_loc, cw_domain_move_out_loc = self._get_domain_locations()
         cw_domain_quant = [('product_id', 'in', self.ids)] + cw_domain_quant_loc
         dates_in_the_past = False
+        if to_date:
+            to_date = datetime.strptime(to_date, '%Y-%m-%d %H:%M:%S')
         if to_date and to_date < fields.Datetime.now():  # Only to_date as to_date will correspond to cw_qty_available
             dates_in_the_past = True
         cw_domain_move_in = [('product_id', 'in', self.ids)] + cw_domain_move_in_loc
@@ -126,7 +126,6 @@ class ProductProduct(models.Model):
         return self._search_product_cw_quantity(operator, value, 'cw_qty_available')
 
     def _search_cw_qty_available_new(self, operator, value, lot_id=False, owner_id=False, package_id=False):
-        ''' Optimized method which doesn't search on stock.moves, only on stock.quants. '''
         product_ids = set()
         domain_quant = self._get_domain_locations()[0]
         if lot_id:
@@ -143,12 +142,9 @@ class ProductProduct(models.Model):
         return list(product_ids)
 
     def _search_cw_virtual_available(self, operator, value):
-        # TDE FIXME: should probably clean the search methods
         return self._search_product_cw_quantity(operator, value, 'cw_virtual_available')
 
     def _search_product_cw_quantity(self, operator, value, field):
-        # TDE FIXME: should probably clean the search methods
-        # to prevent sql injections
         if field not in ('cw_qty_available', 'cw_virtual_available', 'cw_incoming_qty', 'cw_outgoing_qty'):
             raise UserError(_('Invalid domain left operand %s') % field)
         if operator not in ('<', '>', '=', '!=', '<=', '>='):
@@ -156,7 +152,6 @@ class ProductProduct(models.Model):
         if not isinstance(value, (float, int)):
             raise UserError(_('Invalid domain right operand %s') % value)
 
-        # TODO: Still optimization possible when searching virtual quantities
         ids = []
         for product in self.with_context(prefetch_fields=False).search([]):
             if OPERATORS[operator](product[field], value):
@@ -164,11 +159,9 @@ class ProductProduct(models.Model):
         return [('id', 'in', ids)]
 
     def _search_incoming_cw_qty(self, operator, value):
-        # TDE FIXME: should probably clean the search methods
         return self._search_product_cw_quantity(operator, value, 'cw_incoming_qty')
 
     def _search_outgoing_cw_qty(self, operator, value):
-        # TDE FIXME: should probably clean the search methods
         return self._search_product_cw_quantity(operator, value, 'cw_outgoing_qty')
 
     @api.model
@@ -192,12 +185,9 @@ class ProductProduct(models.Model):
         return theoretical_cw_quantity
 
     def _is_price_based_on_cw(self, type):
-        """Check whether the subtotal is based on cw-uom or not
-        :param type: either `'sale'` or `'purchase'`
-        """
         if not self.env.user.has_group('tis_catch_weight.group_catch_weight'):
             return False
-        if self._is_cw_product:
+        if self._is_cw_product():
             if type == 'sale':
                 if self.sale_price_base and self.sale_price_base == 'cwuom':
                     return True
@@ -214,10 +204,10 @@ class ProductProduct(models.Model):
                     return True
             else:
                 return False
+        else:
+            return False
 
     def _is_cw_product(self):
-        """ Checks that product is catchweight product or not"""
-
         if not self.env.user.has_group('tis_catch_weight.group_catch_weight'):
             return False
         else:
@@ -228,10 +218,6 @@ class ProductProduct(models.Model):
 
     @api.multi
     def _compute_cw_sales_count(self):
-        # phase one optimised
-        """
-            Sales product CW quantity for  product form:
-        """
         r = {}
         if not self.user_has_groups('sales_team.group_sale_salesman'):
             return r
@@ -250,10 +236,6 @@ class ProductProduct(models.Model):
 
     @api.multi
     def _compute_purchased_product_cw_qty(self):
-        # phase one optimised
-        """
-            Purchased product CW quantity for  product form:
-        """
         date_from = fields.Datetime.to_string(fields.datetime.now() - timedelta(days=365))
         domain = [
             ('state', 'in', ['purchase', 'done']),
@@ -268,27 +250,8 @@ class ProductProduct(models.Model):
             product.cw_purchased_product_qty = float_round(purchased_data.get(product.id, 0),
                                                            precision_rounding=product.uom_id.rounding)
 
-    def _compute_mrp_product_cw_qty(self):
-        # phase one optimised
-        """
-        Manufactured product CW quantity for  product form:
-        """
-        date_from = fields.Datetime.to_string(fields.datetime.now() - timedelta(days=365))
-        # TODO: state = done?
-        domain = [('state', '=', 'done'), ('product_id', 'in', self.ids), ('date_planned_start', '>', date_from)]
-        read_group_res = self.env['mrp.production'].read_group(domain, ['product_id', 'product_cw_uom_qty'],
-                                                               ['product_id'])
-        mapped_data = dict([(data['product_id'][0], data['product_cw_uom_qty']) for data in read_group_res])
-        for product in self:
-            product.cw_mrp_product_qty = float_round(mapped_data.get(product.id, 0),
-                                                     precision_rounding=product.cw_uom_id.rounding)
 
     def _compute_product_price(self):
-        """
-        Here we fetch the UOM which is passed from the function def cw_product_uom_change from sale module.
-        and we are updating the context.
-        This value will be used in compute price for calculating unit price for the cw products
-        """
         to_uom = self.env.context.get('cw_uom', False)
         if to_uom:
             to_uom = self.env['uom.uom'].browse(to_uom)
@@ -309,7 +272,6 @@ class ProductTemplate(models.Model):
 
     cw_sales_count = fields.Float(compute='_compute_cw_sales_count', string='Sold')
     cw_purchased_product_qty = fields.Float(compute='_compute_purchased_product_cw_qty', string='CW Purchased')
-    cw_mrp_product_qty = fields.Float('CW Manufactured', compute='_compute_mrp_product_cw_qty')
     cw_uom_id = fields.Many2one('uom.uom', string="Catch Weight UOM", default=_default_cw_uom)
     cw_uom_name = fields.Char(string='Unit of Measure Name', related='cw_uom_id.name', readonly=True)
     catch_weight_ok = fields.Boolean('Catch Weight Product', default=False)
@@ -331,10 +293,11 @@ class ProductTemplate(models.Model):
     def _compute_cw_quantities(self):
         res = self._compute_quantities_dict()
         for template in self:
-            template.cw_qty_available = res[template.id]['cw_qty_available']
-            template.cw_virtual_available = res[template.id]['cw_virtual_available']
-            template.cw_incoming_qty = res[template.id]['cw_incoming_qty']
-            template.cw_outgoing_qty = res[template.id]['cw_outgoing_qty']
+            if template.product_variant_id._is_cw_product():
+                template.cw_qty_available = res[template.id]['cw_qty_available']
+                template.cw_virtual_available = res[template.id]['cw_virtual_available']
+                template.cw_incoming_qty = res[template.id]['cw_incoming_qty']
+                template.cw_outgoing_qty = res[template.id]['cw_outgoing_qty']
 
     def _compute_quantities_dict(self):
         res = super(ProductTemplate, self)._compute_quantities_dict()
@@ -394,10 +357,6 @@ class ProductTemplate(models.Model):
     @api.multi
     @api.depends('product_variant_ids.cw_sales_count')
     def _compute_cw_sales_count(self):
-        # phase one optimised
-        """
-        function for fetching the sold count in product form.
-        """
         for product in self:
             product.cw_sales_count = float_round(
                 sum([p.cw_sales_count for p in product.with_context(active_test=False).product_variant_ids]),
@@ -405,19 +364,9 @@ class ProductTemplate(models.Model):
 
     @api.multi
     def _compute_purchased_product_cw_qty(self):
-        # phase one optimised
-        """
-            Purchased product CW quantity for  product form:
-        """
         for template in self:
             template.cw_purchased_product_qty = float_round(
                 sum([p.cw_purchased_product_qty for p in template.product_variant_ids]),
                 precision_rounding=template.cw_uom_id.rounding)
 
-    @api.one
-    def _compute_mrp_product_cw_qty(self):
-        """
-            Manufactured product CW quantity for  product form:
-        """
-        self.cw_mrp_product_qty = float_round(sum(self.mapped('product_variant_ids').mapped('cw_mrp_product_qty')),
-                                              precision_rounding=self.cw_uom_id.rounding)
+

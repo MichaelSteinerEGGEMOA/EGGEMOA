@@ -2,7 +2,7 @@
 # Copyright (C) 2019-present  Technaureus Info Solutions Pvt. Ltd.(<http://www.technaureus.com/>).
 {
     'name': 'CatchWeight Management',
-    'version': '12.0.2.0.6',
+    'version': '12.0.2.1.5',
     'sequence': 1,
     'category': 'Sales',
     'summary': 'Catch Weight Management',
@@ -58,4 +58,3 @@
     'application': True
 
 }
-

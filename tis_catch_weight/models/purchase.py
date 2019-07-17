@@ -27,16 +27,6 @@ class PurchaseOrder(models.Model):
 
 class PurchaseOrderLine(models.Model):
     _inherit = 'purchase.order.line'
-    #
-    # @api.onchange('product_qty', 'product_uom')
-    # def _onchange_quantity(self):
-    #     print("onchange_two")
-    #     if not self.product_id:
-    #         return
-    #     if not self.product_id.cw_uom_id == self.product_cw_uom and self.product_id._is_price_based_on_cw('purchase'):
-    #         catch_weight.add_to_context(self, {'cw_product_uom': self.product_id.cw_uom_id,
-    #                                            'cw_to_uom': self.product_cw_uom})
-    #     return super(PurchaseOrderLine, self)._onchange_quantity()
 
     @api.onchange('product_cw_uom_qty', 'product_cw_uom')
     def _onchange_cw_quantity(self):
@@ -71,22 +61,27 @@ class PurchaseOrderLine(models.Model):
             price_unit = self.product_id.cw_uom_id._compute_price(price_unit, self.product_cw_uom)
         self.price_unit = price_unit
 
+
+
     @api.depends('product_qty', 'price_unit', 'taxes_id', 'product_cw_uom_qty')
     def _compute_amount(self):
+        return super(PurchaseOrderLine, self)._compute_amount()
+
+    def _prepare_compute_all_values(self):
         if not self.env.user.has_group('tis_catch_weight.group_catch_weight'):
-            return super(PurchaseOrderLine, self)._compute_amount()
-        for line in self:
-            if line.product_id._is_price_based_on_cw('purchase'):
-                quantity = line.product_cw_uom_qty
-            else:
-                quantity = line.product_uom_qty
-            taxes = line.taxes_id.compute_all(line.price_unit, line.order_id.currency_id, quantity,
-                                              product=line.product_id, partner=line.order_id.partner_id)
-            line.update({
-                'price_tax': sum(t.get('amount', 0.0) for t in taxes.get('taxes', [])),
-                'price_total': taxes['total_included'],
-                'price_subtotal': taxes['total_excluded'],
-            })
+            return super(PurchaseOrderLine, self)._prepare_compute_all_values()
+        self.ensure_one()
+        if self.product_id._is_price_based_on_cw('purchase'):
+            quantity = self.product_cw_uom_qty
+        else:
+            quantity = self.product_qty
+        return {
+            'price_unit': self.price_unit,
+            'currency_id': self.order_id.currency_id,
+            'product_qty': quantity,
+            'product': self.product_id,
+            'partner': self.order_id.partner_id,
+        }
 
     @api.depends('invoice_lines.invoice_id.state', 'invoice_lines.product_cw_uom_qty')
     def _compute_cw_qty_invoiced(self):
@@ -140,24 +135,29 @@ class PurchaseOrderLine(models.Model):
     def _prepare_stock_moves(self, picking):
         res = super(PurchaseOrderLine, self)._prepare_stock_moves(picking)
         cw_qty = 0.0
-        for move in self.move_ids.filtered(lambda x: x.state != 'cancel' and not x.location_dest_id.usage == "supplier"):
-            cw_qty += move.product_cw_uom._compute_quantity(move.product_cw_uom_qty, self.product_cw_uom, rounding_method='HALF-UP')
+        for move in self.move_ids.filtered(
+                lambda x: x.state != 'cancel' and not x.location_dest_id.usage == "supplier"):
+            cw_qty += move.product_cw_uom._compute_quantity(move.product_cw_uom_qty, self.product_cw_uom,
+                                                            rounding_method='HALF-UP')
 
         diff_cw_quantity = self.product_cw_uom_qty - cw_qty
         if float_compare(diff_cw_quantity, 0.0, precision_rounding=self.product_cw_uom.rounding) > 0:
-            cw_quant_uom = self.product_id.cw_uom_id
-            get_param = self.env['ir.config_parameter'].sudo().get_param
-            if self.product_cw_uom.id != cw_quant_uom.id and get_param('stock.propagate_uom') != '1':
-                cw_product_qty = self.product_cw_uom._compute_quantity(diff_cw_quantity, cw_quant_uom, rounding_method='HALF-UP')
-                if res:
-                    res[0]['product_cw_uom'] = cw_quant_uom.id
-                    res[0]['product_cw_uom_qty'] = cw_product_qty
-            elif self.product_cw_uom.id == cw_quant_uom.id:
-                if res:
-                    res[0]['product_cw_uom'] = self.product_cw_uom.id
-                    res[0]['product_cw_uom_qty'] = diff_cw_quantity
-            else:
-                raise UserError(_('You cannot update CW quantity without updating quantity for validated receipts.'))
+            if self.product_id._is_cw_product():
+                cw_quant_uom = self.product_id.cw_uom_id
+                get_param = self.env['ir.config_parameter'].sudo().get_param
+                if self.product_cw_uom.id != cw_quant_uom.id and get_param('stock.propagate_uom') != '1':
+                    cw_product_qty = self.product_cw_uom._compute_quantity(diff_cw_quantity, cw_quant_uom,
+                                                                           rounding_method='HALF-UP')
+                    if res:
+                        res[0]['product_cw_uom'] = cw_quant_uom.id
+                        res[0]['product_cw_uom_qty'] = cw_product_qty
+                elif self.product_cw_uom.id == cw_quant_uom.id:
+                    if res:
+                        res[0]['product_cw_uom'] = self.product_cw_uom.id
+                        res[0]['product_cw_uom_qty'] = diff_cw_quantity
+                else:
+                    raise UserError(
+                        _('You cannot update CW quantity without updating quantity for validated receipts.'))
         return res
 
     @api.multi

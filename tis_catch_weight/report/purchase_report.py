@@ -93,4 +93,3 @@ class PurchaseReport(models.Model):
                     analytic_account.id
             """
         return group_by_str
-

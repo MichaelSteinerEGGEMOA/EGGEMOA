@@ -48,18 +48,6 @@
             <field name="inherit_id" ref="product.product_template_only_form_view"/>
             <field name="arch" type="xml">
                 <button name="toggle_active" position="before">
-                    <button class="oe_stat_button" name="action_view_mos" type="object" groups="tis_catch_weight.group_catch_weight"
-                        attrs="{'invisible': ['|',('type', 'not in', ['product', 'consu']),('catch_weight_ok','=',False)]}" icon="fa-list-alt" help="Manufactured in the last 365 days">
-                        <div class="o_field_widget o_stat_info" groups="tis_catch_weight.group_catch_weight">
-                            <span class="o_stat_value">
-                                <field name="cw_mrp_product_qty" widget="statinfo" nolabel="1" class="mr4"/>
-                                <field name="cw_uom_name"/>
-                            </span>
-                            <span class="o_stat_text">CW Manufactured</span>
-                        </div>
-                    </button>
-                </button>
-                <button name="toggle_active" position="before">
                     <button class="oe_stat_button" name="action_view_sales"
                             attrs="{'invisible': [('catch_weight_ok','=',False)]}"
                             type="object" icon="fa-signal" groups="tis_catch_weight.group_catch_weight"
@@ -75,7 +63,9 @@
                 </button>
                 <button name="toggle_active" position="before">
                     <button class="oe_stat_button" name="action_view_po" groups="tis_catch_weight.group_catch_weight"
-                        type="object" icon="fa-shopping-cart" attrs="{'invisible': ['|',('purchase_ok', '=', False),('catch_weight_ok','=',False)]}" help="Purchased in the last 365 days">
+                            type="object" icon="fa-shopping-cart"
+                            attrs="{'invisible': ['|',('purchase_ok', '=', False),('catch_weight_ok','=',False)]}"
+                            help="Purchased in the last 365 days">
                         <div class="o_field_widget o_stat_info" groups="tis_catch_weight.group_catch_weight">
                             <span class="o_stat_value">
                                 <field name="cw_purchased_product_qty" widget="statinfo" nolabel="1" class="mr4"/>
@@ -143,25 +133,15 @@
                 </button>
                 <button name="toggle_active" position="before">
                     <button class="oe_stat_button" name="action_view_po" groups="tis_catch_weight.group_catch_weight"
-                        type="object" icon="fa-shopping-cart" attrs="{'invisible': ['|',('purchase_ok', '=', False),('catch_weight_ok','=',False)]}" help="Purchased in the last 365 days">
+                            type="object" icon="fa-shopping-cart"
+                            attrs="{'invisible': ['|',('purchase_ok', '=', False),('catch_weight_ok','=',False)]}"
+                            help="Purchased in the last 365 days">
                         <div class="o_field_widget o_stat_info" groups="tis_catch_weight.group_catch_weight">
                             <span class="o_stat_value">
                                 <field name="cw_purchased_product_qty" widget="statinfo" nolabel="1" class="mr4"/>
                                 <field name="cw_uom_name"/>
                             </span>
                             <span class="o_stat_text">CW Purchased</span>
-                        </div>
-                    </button>
-                </button>
-                <button name="toggle_active" position="before">
-                    <button class="oe_stat_button" name="action_view_mos" type="object" groups="tis_catch_weight.group_catch_weight"
-                        attrs="{'invisible': ['|',('type', 'not in', ['product', 'consu']),('catch_weight_ok','=',False)]}" icon="fa-list-alt" help="Manufactured in the last 365 days">
-                        <div class="o_field_widget o_stat_info">
-                            <span class="o_stat_value" groups="tis_catch_weight.group_catch_weight">
-                                <field name="cw_mrp_product_qty" widget="statinfo" nolabel="1" class="mr4"/>
-                                <field name="cw_uom_name"/>
-                            </span>
-                            <span class="o_stat_text">CW Manufactured</span>
                         </div>
                     </button>
                 </button>
@@ -242,20 +222,20 @@
             </field>
         </record>
 
-<!--        <record id="product_valuation_search_view_cw" model="ir.ui.view">-->
-<!--            <field name="name">product.valuation.search.cw</field>-->
-<!--            <field name="model">product.product</field>-->
-<!--            <field name="inherit_id" ref="stock_account.view_inventory_valuation_search"/>-->
-<!--            <field name="arch" type="xml">-->
-<!--                <filter name="product_tmpl_id" position="after">-->
-<!--                    <filter string="Catch Weight Product" name="cw_filter_catch_weight"-->
-<!--                            groups="tis_catch_weight.group_catch_weight" domain="[('catch_weight_ok', '=', 1)]"/>-->
-<!--                </filter>-->
-<!--            </field>-->
-<!--        </record>-->
+        <!--        <record id="product_valuation_search_view_cw" model="ir.ui.view">-->
+        <!--            <field name="name">product.valuation.search.cw</field>-->
+        <!--            <field name="model">product.product</field>-->
+        <!--            <field name="inherit_id" ref="stock_account.view_inventory_valuation_search"/>-->
+        <!--            <field name="arch" type="xml">-->
+        <!--                <filter name="product_tmpl_id" position="after">-->
+        <!--                    <filter string="Catch Weight Product" name="cw_filter_catch_weight"-->
+        <!--                            groups="tis_catch_weight.group_catch_weight" domain="[('catch_weight_ok', '=', 1)]"/>-->
+        <!--                </filter>-->
+        <!--            </field>-->
+        <!--        </record>-->
 
         <record model="ir.ui.view" id="product_template_kanban_cw_onhand">
-            <field name="name">Product Template Kanban CW Veiw</field>
+            <field name="name">Product Template Kanban CW View</field>
             <field name="model">product.template</field>
             <field name="inherit_id" ref="product.product_template_kanban_view"/>
             <field name="arch" type="xml">
@@ -264,7 +244,7 @@
                 </field>
                 <xpath expr="//t/div/div[1]" position="before">
                     <t t-if="record.catch_weight_ok.raw_value">
-                        <img align="left" class="img" src="/tis_catch_weight/static/src/img/cw_logo.png"
+                        <img align="left" alt="Image" class="img" src="/tis_catch_weight/static/src/img/cw_logo.png"
                              style="top:-1px;left:-1px; position: absolute; z-index:2;" height="30"
                              width="30"/>
                     </t>
@@ -273,8 +253,10 @@
                     <li t-if="record.type.raw_value == 'product' and record.catch_weight_ok.raw_value"
                         groups="tis_catch_weight.group_catch_weight">
                         CW On hand:
-                        <field name="cw_qty_available" attrs="{'invisible': [('catch_weight_ok','=',False)]}" groups="tis_catch_weight.group_catch_weight"/>
-                        <field name="cw_uom_id" attrs="{'invisible': [('catch_weight_ok','=',False)]}" groups="tis_catch_weight.group_catch_weight"/>
+                        <field name="cw_qty_available" attrs="{'invisible': [('catch_weight_ok','=',False)]}"
+                               groups="tis_catch_weight.group_catch_weight"/>
+                        <field name="cw_uom_id" attrs="{'invisible': [('catch_weight_ok','=',False)]}"
+                               groups="tis_catch_weight.group_catch_weight"/>
                     </li>
                 </ul>
 

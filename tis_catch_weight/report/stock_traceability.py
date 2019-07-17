@@ -9,14 +9,12 @@ class MrpStockReport(models.TransientModel):
 
     @api.model
     def _cw_quantity_to_str(self, from_uom, to_uom, qty):
-        """ workaround to apply the float rounding logic of t-esc on data prepared server side """
 
         cw_qty = from_uom._compute_quantity(qty, to_uom, rounding_method='HALF-UP')
         return self.env['ir.qweb.field.float'].value_to_html(cw_qty,
                                                              {'decimal_precision': 'Product CW Unit of Measure'})
 
     def _make_dict_move(self, level, parent_id, move_line, unfoldable=False):
-        """Fetch cw quantity"""
 
         res = super(MrpStockReport, self)._make_dict_move(level, parent_id, move_line, unfoldable)
         for data in res:
@@ -32,7 +30,6 @@ class MrpStockReport(models.TransientModel):
 
     @api.model
     def _final_vals_to_lines(self, final_vals, level):
-        """Add cw quantity to columns"""
 
         lines = super(MrpStockReport, self)._final_vals_to_lines(final_vals, level)
         n = 0
@@ -40,4 +37,3 @@ class MrpStockReport(models.TransientModel):
             lines[n]['columns'].append(final_vals[n].get('product_cw_qty_uom', 0))
             n += 1
         return lines
-

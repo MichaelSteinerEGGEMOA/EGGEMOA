@@ -24,9 +24,10 @@
                     <label for="product_cw_uom_qty" string="CW Quantity"
                            attrs="{'readonly': [('catch_weight_ok', '=', False)]}"
                            groups="tis_catch_weight.group_catch_weight"/>
-                    <div groups="tis_catch_weight.group_catch_weight" >
+                    <div groups="tis_catch_weight.group_catch_weight">
                         <field context="{'cw_quantity':product_cw_uom_qty,  'cw_uom':product_cw_uom, 'cw_uom_qty_change':True}"
-                                name="product_cw_uom_qty" class="oe_inline" attrs="{'readonly': [('catch_weight_ok', '=', False)]}"/>
+                               name="product_cw_uom_qty" class="oe_inline"
+                               attrs="{'readonly': [('catch_weight_ok', '=', False)]}"/>
                         <field name="product_cw_uom" force_save="1" class="oe_inline oe_no_button"
                                attrs="{'readonly': ['|',('catch_weight_ok', '=', False),('state', 'in', ('sale', 'done', 'cancel'))],
                                 'required': [('display_type', '=', False)],}"/>

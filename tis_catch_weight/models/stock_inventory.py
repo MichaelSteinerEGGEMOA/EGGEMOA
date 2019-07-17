@@ -10,7 +10,7 @@ from odoo.exceptions import UserError, ValidationError
 class InventoryLine(models.Model):
     _inherit = "stock.inventory.line"
 
-    product_cw_uom_id = fields.Many2one('uom.uom', string='CW-UOM',related='product_id.cw_uom_id', required=True)
+    product_cw_uom_id = fields.Many2one('uom.uom', string='CW-UOM', related='product_id.cw_uom_id', required=True)
     product_cw_uom_category_id = fields.Many2one(string='Uom category', related='product_cw_uom_id.category_id',
                                                  readonly=True)
     cw_product_qty = fields.Float('Real CW Quantity',
@@ -88,7 +88,6 @@ class Inventory(models.Model):
     @api.one
     @api.depends('product_id', 'line_ids.cw_product_qty')
     def _compute_total_cw_qty(self):
-        """ For single product inventory, total quantity of the counted """
         if self.product_id:
             self.total_cw_qty = sum(self.mapped('line_ids').mapped('cw_product_qty'))
         else:

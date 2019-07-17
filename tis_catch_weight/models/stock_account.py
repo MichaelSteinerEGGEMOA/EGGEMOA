@@ -1,12 +1,7 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2019-Today  Technaureus Info Solutions Pvt Ltd.(<http://technaureus.com/>).
 
-from itertools import groupby
-from operator import itemgetter
-
 from odoo import api, fields, models, _
-from odoo.addons import decimal_precision as dp
-from odoo.exceptions import UserError
 from odoo.tools.float_utils import float_compare, float_round, float_is_zero
 
 
@@ -15,65 +10,64 @@ class StockMove(models.Model):
 
     @api.model
     def _run_fifo(self, move, quantity=None):
-        res = super(StockMove, self)._run_fifo(move, quantity=None)
-
+        if not self.env.user.has_group('tis_catch_weight.group_catch_weight'):
+            return super(StockMove, self)._run_fifo(move, quantity=None)
         move.ensure_one()
+        if not move.product_id._is_price_based_on_cw('purchase'):
+            return super(StockMove, self)._run_fifo(move, quantity=None)
 
         valued_move_lines = move.move_line_ids.filtered(
             lambda
                 ml: ml.location_id._should_be_valued() and not ml.location_dest_id._should_be_valued() and not ml.owner_id)
-        if move.product_id._is_price_based_on_cw('purchase'):
-            valued_quantity = 0
-            for valued_move_line in valued_move_lines:
-                valued_quantity += valued_move_line.product_cw_uom._compute_quantity(valued_move_line.cw_qty_done,
-                                                                                     move.product_id.cw_uom_id)
-            qty_to_take_on_candidates = quantity or valued_quantity
-            candidates = move.product_id._get_fifo_candidates_in_move()
-            new_standard_price = 0
-            tmp_value = 0  # to accumulate the value taken on the candidates
-            for candidate in candidates:
-                new_standard_price = candidate.price_unit
-                if candidate.remaining_qty <= qty_to_take_on_candidates:
-                    qty_taken_on_candidate = candidate.remaining_qty
-                else:
-                    qty_taken_on_candidate = qty_to_take_on_candidates
+        valued_quantity = 0
+        for valued_move_line in valued_move_lines:
+            valued_quantity += valued_move_line.product_cw_uom._compute_quantity(valued_move_line.cw_qty_done,
+                                                                                 move.product_id.cw_uom_id)
+        qty_to_take_on_candidates = quantity or valued_quantity
+        candidates = move.product_id._get_fifo_candidates_in_move_with_company(move.company_id.id)
+        new_standard_price = 0
+        tmp_value = 0  # to accumulate the value taken on the candidates
+        for candidate in candidates:
+            new_standard_price = candidate.price_unit
+            if candidate.remaining_qty <= qty_to_take_on_candidates:
+                qty_taken_on_candidate = candidate.remaining_qty
+            else:
+                qty_taken_on_candidate = qty_to_take_on_candidates
 
-                candidate_price_unit = candidate.remaining_value / candidate.remaining_qty
-                value_taken_on_candidate = qty_taken_on_candidate * candidate_price_unit
-                candidate_vals = {
-                    'remaining_qty': candidate.remaining_qty - qty_taken_on_candidate,
-                    'remaining_value': candidate.remaining_value - value_taken_on_candidate,
-                }
-                candidate.write(candidate_vals)
+            candidate_price_unit = candidate.remaining_value / candidate.remaining_qty
+            value_taken_on_candidate = qty_taken_on_candidate * candidate_price_unit
+            candidate_vals = {
+                'remaining_qty': candidate.remaining_qty - qty_taken_on_candidate,
+                'remaining_value': candidate.remaining_value - value_taken_on_candidate,
+            }
+            candidate.write(candidate_vals)
 
-                qty_to_take_on_candidates -= qty_taken_on_candidate
-                tmp_value += value_taken_on_candidate
-                if qty_to_take_on_candidates == 0:
-                    break
-
-            if new_standard_price and move.product_id.cost_method == 'fifo':
-                move.product_id.sudo().standard_price = new_standard_price
-
+            qty_to_take_on_candidates -= qty_taken_on_candidate
+            tmp_value += value_taken_on_candidate
             if qty_to_take_on_candidates == 0:
-                move.write({
-                    'value': -tmp_value if not quantity else move.value or -tmp_value,
-                    'price_unit': -tmp_value / move.product_qty,
-                })
-            elif qty_to_take_on_candidates > 0:
-                last_fifo_price = new_standard_price or move.product_id.standard_price
-                negative_stock_value = last_fifo_price * -qty_to_take_on_candidates
-                tmp_value += abs(negative_stock_value)
-                vals = {
-                    'remaining_qty': move.remaining_qty + -qty_to_take_on_candidates,
-                    'remaining_value': move.remaining_value + negative_stock_value,
-                    'value': -tmp_value,
-                    'price_unit': -1 * last_fifo_price,
-                }
-                move.write(vals)
-            return tmp_value
+                break
 
-        else:
-            return res
+        if new_standard_price and move.product_id.cost_method == 'fifo':
+            move.product_id.sudo().with_context(force_company=move.company_id.id) \
+                .standard_price = new_standard_price
+
+        if qty_to_take_on_candidates == 0:
+            move.write({
+                'value': -tmp_value if not quantity else move.value or -tmp_value,
+                'price_unit': -tmp_value / move.product_qty,
+            })
+        elif qty_to_take_on_candidates > 0:
+            last_fifo_price = new_standard_price or move.product_id.standard_price
+            negative_stock_value = last_fifo_price * -qty_to_take_on_candidates
+            tmp_value += abs(negative_stock_value)
+            vals = {
+                'remaining_qty': move.remaining_qty + -qty_to_take_on_candidates,
+                'remaining_value': move.remaining_value + negative_stock_value,
+                'value': -tmp_value,
+                'price_unit': -1 * last_fifo_price,
+            }
+            move.write(vals)
+        return tmp_value
 
     def _prepare_account_move_line(self, qty, cost, credit_account_id, debit_account_id):
         res = super(StockMove, self)._prepare_account_move_line(qty, cost, credit_account_id, debit_account_id)
@@ -102,7 +96,6 @@ class StockMove(models.Model):
                 if 'account_quantity_done' in params:
                     quantity = params.get('account_quantity_done')
             self.ensure_one()
-
             if self._is_in():
                 valued_move_lines = self.move_line_ids.filtered(
                     lambda
@@ -117,8 +110,7 @@ class StockMove(models.Model):
                 vals = {
                     'price_unit': price_unit,
                     'value': value if quantity is None or not self.value else self.value,
-                    'remaining_value': value if quantity is None else self.remaining_value + value,
-                }
+                    'remaining_value': value if quantity is None else self.remaining_value + value,}
                 vals['remaining_qty'] = valued_quantity if quantity is None else self.remaining_qty + quantity
 
                 if self.product_id.cost_method == 'standard':
@@ -134,8 +126,9 @@ class StockMove(models.Model):
                         ml: ml.location_id._should_be_valued() and not ml.location_dest_id._should_be_valued() and not ml.owner_id)
                 valued_quantity = 0
                 for valued_move_line in valued_move_lines:
-                    valued_quantity += valued_move_line.product_uom_id._compute_quantity(valued_move_line.cw_qty_done,
-                                                                                         self.product_id.uom_id)
+                    # -----qty_done
+                    valued_quantity += valued_move_line.product_cw_uom._compute_quantity(valued_move_line.cw_qty_done,
+                                                                                         self.product_id.cw_uom_id)
                 self.env['stock.move']._run_fifo(self, quantity=quantity)
                 if self.product_id.cost_method in ['standard', 'average']:
                     curr_rounding = self.company_id.currency_id.rounding
@@ -187,6 +180,7 @@ class StockMove(models.Model):
                             move_vals['remaining_value'] = move_id.remaining_value + correction_value
                         elif move_id._is_out() and qty_difference > 0:
                             correction_value = self.env['stock.move']._run_fifo(move_id, quantity=qty_difference)
+                            # no need to adapt `remaining_qty` and `remaining_value` as `_run_fifo` took care of it
                             move_vals['value'] = move_id.value - correction_value
                         elif move_id._is_out() and qty_difference < 0:
                             candidates_receipt = self.env['stock.move'].search(move_id._get_in_domain(),
@@ -195,7 +189,7 @@ class StockMove(models.Model):
                                 candidates_receipt.write({
                                     'remaining_qty': candidates_receipt.remaining_qty + -qty_difference,
                                     'remaining_value': candidates_receipt.remaining_value + (
-                                                -qty_difference * candidates_receipt.price_unit),
+                                            -qty_difference * candidates_receipt.price_unit),
                                 })
                                 correction_value = qty_difference * candidates_receipt.price_unit
                             else:
@@ -247,8 +241,8 @@ class ProductProduct(models.Model):
 
         self.env['account.move.line'].check_access_rights('read')
         fifo_automated_values = {}
-        query = """SELECT 
-                        aml.product_id, aml.account_id, sum(aml.debit) - sum(aml.credit), 
+        query = """SELECT
+                        aml.product_id, aml.account_id, sum(aml.debit) - sum(aml.credit),
                         sum(cw_quantity), array_agg(aml.id)
                     FROM account_move_line AS aml
                     WHERE aml.product_id IS NOT NULL AND aml.company_id=%%s %s
@@ -266,7 +260,7 @@ class ProductProduct(models.Model):
             fifo_automated_values[(row[0], row[1])] = (row[2], row[3], list(row[4]))
 
         for product in self:
-            if product._is_price_based_on_cw('purchase'):
+            if product._is_cw_product():
                 if product.cost_method in ['standard', 'average']:
                     qty_available = product.with_context(company_owned=True, owner_id=False).cw_qty_available
                     product.cw_qty_at_date = qty_available

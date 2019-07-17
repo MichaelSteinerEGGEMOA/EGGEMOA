@@ -7,9 +7,9 @@
         <field name="arch" type="xml">
             <xpath expr="//field[@name='to_refund']" position="before">
                 <field name="catch_weight_ok" groups="tis_catch_weight.group_catch_weight" invisible="1"/>
-                <field name="cw_quantity" attrs="{'readonly': [('catch_weight_ok', '=', False)]}"
+                <field name="cw_quantity" attrs="{'readonly': [('catch_weight_ok', '=', True)]}"
                        groups="tis_catch_weight.group_catch_weight"/>
-                <field name="cw_uom_id" attrs="{'readonly': [('catch_weight_ok', '=', False)]}"
+                <field name="cw_uom_id" attrs="{'readonly': [('catch_weight_ok', '=', True)]}"
                        groups="tis_catch_weight.group_catch_weight"/>
             </xpath>
         </field>

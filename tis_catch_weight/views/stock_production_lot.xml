@@ -1,19 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
-	<data>
+    <data>
         <record model="ir.ui.view" id="view_stock_production_form_lot_catchweight">
-    		<field name="name">stock.production.lot.inherit.form</field>
-    		<field name="model">stock.production.lot</field>
-    		<field name="inherit_id" ref="stock.view_production_lot_form"/>
-    		<field name="arch" type="xml">
-    			<xpath expr="//field[@name='ref']" position="before">
+            <field name="name">stock.production.lot.inherit.form</field>
+            <field name="model">stock.production.lot</field>
+            <field name="inherit_id" ref="stock.view_production_lot_form"/>
+            <field name="arch" type="xml">
+                <xpath expr="//field[@name='ref']" position="before">
                     <label for="cw_product_qty" string="CW Quantity" groups="tis_catch_weight.group_catch_weight"/>
                     <div class="o_row">
-                        <field name="cw_product_qty"  groups="tis_catch_weight.group_catch_weight"/>
-                        <field name="product_cw_uom" groups="tis_catch_weight.group_catch_weight" />
+                        <field name="cw_product_qty" groups="tis_catch_weight.group_catch_weight"/>
+                        <field name="product_cw_uom" groups="tis_catch_weight.group_catch_weight"/>
                     </div>
-    			</xpath>
-    		</field>
-    	</record>
+                </xpath>
+            </field>
+        </record>
     </data>
 </odoo>

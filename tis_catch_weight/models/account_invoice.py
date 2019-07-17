@@ -5,6 +5,7 @@ from odoo import models, fields, api, _
 from odoo.addons import decimal_precision as dp
 from . import catch_weight
 
+
 class AccountInvoiceLine(models.Model):
     _inherit = 'account.invoice.line'
 
@@ -13,9 +14,6 @@ class AccountInvoiceLine(models.Model):
                  'product_id', 'invoice_id.partner_id', 'invoice_id.currency_id', 'invoice_id.company_id',
                  'invoice_id.date_invoice', 'invoice_id.date', 'product_cw_uom_qty')
     def _compute_price(self):
-        # phase one optimised
-        """Compute subtotal on the basis of catch weight uom if price based on cw-uom
-                otherwise compute on the basis of uom"""
         if not self.product_id._is_cw_product():
             return super(AccountInvoiceLine, self)._compute_price()
         currency = self.invoice_id and self.invoice_id.currency_id or None
@@ -49,28 +47,28 @@ class AccountInvoiceLine(models.Model):
 
     @api.onchange('product_cw_uom')
     def _onchange_cw_uom(self):
-        """
-        validation for CW uom quantity
-        """
+
         warning = {}
         result = {}
         if self.product_id.cw_uom_id.category_id.id != self.product_cw_uom.category_id.id:
             warning = {
                 'title': _('Warning!'),
-                'message': _('The selected unit of measure has to be in the same category as the product Catch Weight unit of measure.'),
+                'message': _(
+                    'The selected unit of measure has to be in the same category as the product Catch Weight unit of measure.'),
             }
             self.product_cw_uom = self.product_id.uom_id.id
         if warning:
             result['warning'] = warning
         return result
 
-    @api.onchange('uom_id','product_cw_uom')
+    @api.onchange('uom_id', 'product_cw_uom')
     def _onchange_uom_id(self):
         inv_type = 'purchase' if self.invoice_id.type in ['in_invoice', 'in_refund'] else 'sale'
         if self.product_cw_uom and self.product_id._is_price_based_on_cw(inv_type):
             catch_weight.add_to_context(self, {'cw_product_uom': self.product_id.cw_uom_id,
                                                'cw_to_uom': self.product_cw_uom})
         return super(AccountInvoiceLine, self)._onchange_uom_id()
+
 
 class AccountInvoice(models.Model):
     _inherit = 'account.invoice'
@@ -132,6 +130,3 @@ class AccountInvoice(models.Model):
                     tax_grouped[key]['amount'] += val['amount']
                     tax_grouped[key]['base'] += round_curr(val['base'])
         return tax_grouped
-
-
-

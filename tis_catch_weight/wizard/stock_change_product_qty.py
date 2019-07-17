@@ -12,16 +12,16 @@ class ProductChangeQuantity(models.TransientModel):
     catch_weight_ok = fields.Boolean(invisible='1', related='product_id.catch_weight_ok')
     new_cw_quantity = fields.Float(
         'New CW Quantity on Hand', default=0,
-        digits=dp.get_precision('Product CW Unit of Measure'), required=True,)
+        digits=dp.get_precision('Product CW Unit of Measure'), required=True, )
 
     def _action_start_line(self):
-        res=super(ProductChangeQuantity, self)._action_start_line()
+        res = super(ProductChangeQuantity, self)._action_start_line()
         product = self.product_id.with_context(location=self.location_id.id)
         cw_th_qty = product.cw_qty_available
         res.update({
-               'cw_product_qty': self.new_cw_quantity,
-               'product_cw_uom': self.product_id.cw_uom_id.id,
-               'theoretical_cw_qty': cw_th_qty,
+            'cw_product_qty': self.new_cw_quantity,
+            'product_cw_uom': self.product_id.cw_uom_id.id,
+            'theoretical_cw_qty': cw_th_qty,
         })
         return res
 
@@ -46,6 +46,3 @@ class ProductChangeQuantity(models.TransientModel):
             if self.new_cw_quantity != 0 and self.new_quantity == 0:
                 raise UserError(_("Please enter the Quantity"))
             return super(ProductChangeQuantity, self).change_product_qty()
-
-
-
