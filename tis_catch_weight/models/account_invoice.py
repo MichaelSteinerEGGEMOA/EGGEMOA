@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
-# Copyright (C) 2019-present  Technaureus Info Solutions Pvt. Ltd.(<http://www.technaureus.com/>).
+# Copyright (C) 2019-Today  Technaureus Info Solutions Pvt Ltd.(<http://technaureus.com/>).
 
 from odoo import models, fields, api, _
-from odoo.addons import decimal_precision as dp
+import odoo.addons.decimal_precision as dp
 from . import catch_weight
 
 
@@ -16,6 +16,7 @@ class AccountInvoiceLine(models.Model):
     def _compute_price(self):
         if not self.product_id._is_cw_product():
             return super(AccountInvoiceLine, self)._compute_price()
+
         currency = self.invoice_id and self.invoice_id.currency_id or None
         price = self.price_unit * (1 - (self.discount or 0.0) / 100.0)
         taxes = False
@@ -33,7 +34,7 @@ class AccountInvoiceLine(models.Model):
         sign = self.invoice_id.type in ['in_refund', 'out_refund'] and -1 or 1
         self.price_subtotal_signed = price_subtotal_signed * sign
 
-    product_cw_uom = fields.Many2one('uom.uom', string='CW-UOM')
+    product_cw_uom = fields.Many2one('product.uom', string='CW-UOM')
     product_cw_uom_qty = fields.Float(string='CW-Qty', default=0.0,
                                       digits=dp.get_precision('Product CW Unit of Measure'))
     catch_weight_ok = fields.Boolean(invisible='1', related='product_id.catch_weight_ok')
@@ -47,7 +48,6 @@ class AccountInvoiceLine(models.Model):
 
     @api.onchange('product_cw_uom')
     def _onchange_cw_uom(self):
-
         warning = {}
         result = {}
         if self.product_id.cw_uom_id.category_id.id != self.product_cw_uom.category_id.id:

@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
-# Copyright (C) 2019-present  Technaureus Info Solutions Pvt. Ltd.(<http://www.technaureus.com/>).
+# Copyright (C) 2019-Today  Technaureus Info Solutions Pvt Ltd.(<http://technaureus.com/>).
 
 from odoo import models, fields, api, _
-from odoo.exceptions import UserError
+from odoo.exceptions import UserError, ValidationError
 from odoo.tools.float_utils import float_round, float_compare, float_is_zero
 from odoo.addons import decimal_precision as dp
 from . import catch_weight
@@ -11,17 +11,16 @@ from . import catch_weight
 class StockMoveLine(models.Model):
     _inherit = 'stock.move.line'
 
-    product_cw_uom = fields.Many2one('uom.uom', string='CW-UOM')
+    product_cw_uom = fields.Many2one('product.uom', string='CW-UOM')
     catch_weight_ok = fields.Boolean(invisible='1', related='product_id.catch_weight_ok')
     product_cw_uom_qty = fields.Float(string='CW Demand', digits=dp.get_precision('Product CW Unit of Measure'))
     cw_qty_done = fields.Float(string='CW Done', digits=dp.get_precision('Product CW Unit of Measure'))
     ordered_cw_qty = fields.Float('Ordered CW Quantity', digits=dp.get_precision('Product CW Unit of Measure'))
-    cw_product_qty = fields.Float('CW Real Quantity', compute='_compute_cw_product_qty', inverse='_set_cw_product_qty',
+    cw_product_qty = fields.Float('Real Reserved CW Quantity', compute='_compute_cw_product_qty', inverse='_set_cw_product_qty',
                                   digits=0, store=True, )
 
-    @api.onchange('product_id', 'product_uom_id', ' product_cw_uom')
+    @api.onchange('product_id', 'product_uom_id', ' product_cw_uom', 'move_id.product_cw_uom')
     def onchange_product_id(self):
-
         res = super(StockMoveLine, self).onchange_product_id()
         if self.product_id:
             self.product_cw_uom = self.product_id.cw_uom_id.id
@@ -44,14 +43,6 @@ class StockMoveLine(models.Model):
             return super(StockMoveLine, self)._action_done()
         else:
             cw_params = self._context.get('cw_params')
-            """ This method is called during a move's `action_done`. It'll actually move a quant from
-                    the source location to the destination location, and unreserve if needed in the source
-                    location.
-
-                    This method is intended to be called on all the move lines of a move. This method is not
-                    intended to be called when editing a `done` move (that's what the override of `write` here
-                    is done.
-                    """
             ml_to_delete = self.env['stock.move.line']
             for ml in self:
                 uom_qty = float_round(ml.qty_done, precision_rounding=ml.product_uom_id.rounding,
@@ -102,17 +93,15 @@ class StockMoveLine(models.Model):
                             Quant._update_reserved_quantity(ml.product_id, ml.location_id, -ml.product_qty,
                                                             lot_id=ml.lot_id, package_id=ml.package_id,
                                                             owner_id=ml.owner_id, strict=True)
-
-
                         except UserError:
-
                             catch_weight.add_to_context(self, {'cw_reserved_quantity': -ml.cw_product_qty})
                             Quant._update_reserved_quantity(ml.product_id, ml.location_id, -ml.product_qty,
                                                             lot_id=False,
                                                             package_id=ml.package_id, owner_id=ml.owner_id, strict=True)
                     quantity = ml.product_uom_id._compute_quantity(ml.qty_done, ml.move_id.product_id.uom_id,
                                                                    rounding_method='HALF-UP')
-                    cw_quantity = ml.cw_qty_done
+                    cw_quantity = ml.product_cw_uom._compute_quantity(ml.cw_qty_done, ml.move_id.product_id.cw_uom_id,
+                                                                      rounding_method='HALF-UP')
                     catch_weight.add_to_context(self, {'cw_quantity': -cw_quantity})
                     available_qty, in_date = Quant._update_available_quantity(ml.product_id, ml.location_id, -quantity,
                                                                               lot_id=ml.lot_id,
@@ -133,7 +122,7 @@ class StockMoveLine(models.Model):
                             Quant._update_available_quantity(ml.product_id, ml.location_id, -taken_from_untracked_qty,
                                                              lot_id=False, package_id=ml.package_id,
                                                              owner_id=ml.owner_id)
-                            catch_weight.add_to_context({'cw_quantity': cw_taken_from_untracked_qty})
+                            catch_weight.add_to_context(self, {'cw_quantity': cw_taken_from_untracked_qty})
                             Quant._update_available_quantity(ml.product_id, ml.location_id, taken_from_untracked_qty,
                                                              lot_id=ml.lot_id, package_id=ml.package_id,
                                                              owner_id=ml.owner_id)
@@ -352,11 +341,10 @@ class StockMoveLine(models.Model):
 
     @api.model
     def create(self, vals):
-
-
         if not self.env.user.has_group('tis_catch_weight.group_catch_weight'):
             return super(StockMoveLine, self).create(vals)
         else:
+            cw_params = self._context.get('cw_params')
             if 'cw_qty_done' in vals:
                 catch_weight.add_to_context(self, {'account_quantity_done': vals['cw_qty_done'] or 0})
             vals['ordered_cw_qty'] = vals.get('product_cw_uom_qty')
@@ -373,11 +361,12 @@ class StockMoveLine(models.Model):
                         'product_cw_uom': vals['product_cw_uom'],
                     })
                 if ml.state == 'done':
-
-
                     if ml.product_id.type == 'product':
                         Quant = self.env['stock.quant']
-                        cw_quantity = ml.cw_qty_done
+                        cw_quantity = ml.product_cw_uom._compute_quantity(ml.cw_qty_done,
+                                                                          ml.move_id.product_id.cw_uom_id,
+                                                                          rounding_method='HALF-UP')
+
                         in_date = None
                         cw_available_qty, in_date = Quant._update_available_cw_quantity(ml.product_id, ml.location_id,
                                                                                         -cw_quantity,

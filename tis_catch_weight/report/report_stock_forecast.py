@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Copyright (C) 2019-present  Technaureus Info Solutions Pvt. Ltd.(<http://www.technaureus.com/>).
+# Copyright (C) 2019-Today  Technaureus Info Solutions(<http://technaureus.com/>).
 
 from odoo import api, fields, models, tools
 
@@ -19,24 +19,21 @@ class ReportStockForecat(models.Model):
             date as date,
             sum(cw_product_qty) AS cw_quantity,
             sum(product_qty) AS quantity,
-            sum(sum(product_qty)) OVER (PARTITION BY product_id ORDER BY date) AS cumulative_quantity,
-            company_id
+            sum(sum(product_qty)) OVER (PARTITION BY product_id ORDER BY date) AS cumulative_quantity
             FROM
             (SELECT
             MIN(id) as id,
             MAIN.product_id as product_id,
             SUB.date as date,
             CASE WHEN MAIN.date = SUB.date THEN sum(MAIN.product_qty) ELSE 0 END as product_qty,
-            CASE WHEN MAIN.date = SUB.date THEN sum(MAIN.cw_product_qty) ELSE 0 END as cw_product_qty,
-            MAIN.company_id as company_id
+            CASE WHEN MAIN.date = SUB.date THEN sum(MAIN.cw_product_qty) ELSE 0 END as cw_product_qty
             FROM
             (SELECT
                 MIN(sq.id) as id,
                 sq.product_id,
                 date_trunc('week', to_date(to_char(CURRENT_DATE, 'YYYY/MM/DD'), 'YYYY/MM/DD')) as date,
                 SUM(sq.quantity) AS product_qty,
-                SUM(sq.cw_stock_quantity) AS cw_product_qty,
-                sq.company_id
+                SUM(sq.cw_stock_quantity) AS cw_product_qty
                 FROM
                 stock_quant as sq
                 LEFT JOIN
@@ -45,7 +42,7 @@ class ReportStockForecat(models.Model):
                 stock_location location_id ON sq.location_id = location_id.id
                 WHERE
                 location_id.usage = 'internal'
-                GROUP BY date, sq.product_id, sq.company_id
+                GROUP BY date, sq.product_id
                 UNION ALL
                 SELECT
                 MIN(-sm.id) as id,
@@ -55,8 +52,7 @@ class ReportStockForecat(models.Model):
                 ELSE date_trunc('week', to_date(to_char(CURRENT_DATE, 'YYYY/MM/DD'), 'YYYY/MM/DD')) END
                 AS date,
                 SUM(sm.product_qty) AS product_qty,
-                SUM(sm.product_cw_uom_qty) AS cw_product_qty,
-                sm.company_id
+                SUM(sm.product_cw_uom_qty) AS cw_product_qty
                 FROM
                    stock_move as sm
                 LEFT JOIN
@@ -68,7 +64,7 @@ class ReportStockForecat(models.Model):
                 WHERE
                 sm.state IN ('confirmed','partially_available','assigned','waiting') and
                 source_location.usage != 'internal' and dest_location.usage = 'internal'
-                GROUP BY sm.date_expected,sm.product_id, sm.company_id
+                GROUP BY sm.date_expected,sm.product_id
                 UNION ALL
                 SELECT
                     MIN(-sm.id) as id,
@@ -78,8 +74,7 @@ class ReportStockForecat(models.Model):
                         ELSE date_trunc('week', to_date(to_char(CURRENT_DATE, 'YYYY/MM/DD'), 'YYYY/MM/DD')) END
                     AS date,
                     SUM(-(sm.product_qty)) AS product_qty,
-                    SUM(-(sm.product_cw_uom_qty)) AS cw_product_qty,
-                    sm.company_id
+                    SUM(-(sm.product_cw_uom_qty)) AS cw_product_qty
                 FROM
                    stock_move as sm
                 LEFT JOIN
@@ -91,7 +86,7 @@ class ReportStockForecat(models.Model):
                 WHERE
                     sm.state IN ('confirmed','partially_available','assigned','waiting') and
                 source_location.usage = 'internal' and dest_location.usage != 'internal'
-                GROUP BY sm.date_expected,sm.product_id, sm.company_id)
+                GROUP BY sm.date_expected,sm.product_id)
              as MAIN
          LEFT JOIN
          (SELECT DISTINCT date
@@ -110,6 +105,6 @@ class ReportStockForecat(models.Model):
                  ((dest_location.usage = 'internal' AND source_location.usage != 'internal')
                   or (source_location.usage = 'internal' AND dest_location.usage != 'internal'))) AS DATE_SEARCH)
                  SUB ON (SUB.date IS NOT NULL)
-        GROUP BY MAIN.product_id,SUB.date, MAIN.date, MAIN.company_id
+        GROUP BY MAIN.product_id,SUB.date, MAIN.date
         ) AS FINAL
-        GROUP BY product_id,date,company_id)""")
+        GROUP BY product_id,date)""")

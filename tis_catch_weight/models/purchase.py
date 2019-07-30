@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Copyright (C) 2019-present  Technaureus Info Solutions Pvt. Ltd.(<http://www.technaureus.com/>).
+# Copyright (C) 2019-Today  Technaureus Info Solutions Pvt Ltd.(<http://technaureus.com/>).
 
 from odoo import models, fields, api, _
 from odoo.addons import decimal_precision as dp
@@ -38,9 +38,9 @@ class PurchaseOrderLine(models.Model):
         seller = self.product_id._select_seller(
             partner_id=self.partner_id,
             quantity=self.product_qty,
-            date=self.order_id.date_order and self.order_id.date_order.date(),
+            date=self.order_id.date_order and self.order_id.date_order[:10],
             uom_id=self.product_uom,
-            params=params)
+        )
 
         if seller or not self.date_planned:
             self.date_planned = self._get_date_planned(seller).strftime(DEFAULT_SERVER_DATETIME_FORMAT)
@@ -61,27 +61,45 @@ class PurchaseOrderLine(models.Model):
             price_unit = self.product_id.cw_uom_id._compute_price(price_unit, self.product_cw_uom)
         self.price_unit = price_unit
 
-
-
     @api.depends('product_qty', 'price_unit', 'taxes_id', 'product_cw_uom_qty')
     def _compute_amount(self):
-        return super(PurchaseOrderLine, self)._compute_amount()
-
-    def _prepare_compute_all_values(self):
         if not self.env.user.has_group('tis_catch_weight.group_catch_weight'):
-            return super(PurchaseOrderLine, self)._prepare_compute_all_values()
-        self.ensure_one()
-        if self.product_id._is_price_based_on_cw('purchase'):
-            quantity = self.product_cw_uom_qty
-        else:
-            quantity = self.product_qty
-        return {
-            'price_unit': self.price_unit,
-            'currency_id': self.order_id.currency_id,
-            'product_qty': quantity,
-            'product': self.product_id,
-            'partner': self.order_id.partner_id,
-        }
+            return super(PurchaseOrderLine, self)._compute_amount()
+        # phase one optimised
+        for line in self:
+            if line.product_id._is_price_based_on_cw('purchase'):
+                quantity = line.product_cw_uom_qty
+            else:
+                quantity = line.product_qty
+            taxes = line.taxes_id.compute_all(line.price_unit, line.order_id.currency_id, quantity,
+                                              product=line.product_id, partner=line.order_id.partner_id)
+            line.update({
+                'price_tax': sum(t.get('amount', 0.0) for t in taxes.get('taxes', [])),
+                'price_total': taxes['total_included'],
+                'price_subtotal': taxes['total_excluded'],
+            })
+
+    @api.depends('order_id.state', 'move_ids.state', 'move_ids.cw_qty_done')
+    def _compute_cw_qty_received(self):
+        for line in self:
+            if line.product_id._is_cw_product():
+                if line.order_id.state not in ['purchase', 'done']:
+                    line.cw_qty_received = 0.0
+                    continue
+                if line.product_id.type not in ['consu', 'product']:
+                    line.cw_qty_received = line.product_cw_uom_qty
+                    continue
+                total = 0.0
+                for move in line.move_ids:
+                    if move.state == 'done':
+                        if move.location_dest_id.usage == "supplier":
+                            if move.to_refund:
+                                total -= move.product_cw_uom._compute_quantity(move.cw_qty_done, line.product_cw_uom)
+                        else:
+                            total += move.product_cw_uom._compute_quantity(move.cw_qty_done, line.product_cw_uom)
+                line.cw_qty_received = total
+            else:
+                line.cw_qty_received = 0.0
 
     @api.depends('invoice_lines.invoice_id.state', 'invoice_lines.product_cw_uom_qty')
     def _compute_cw_qty_invoiced(self):
@@ -97,14 +115,14 @@ class PurchaseOrderLine(models.Model):
                                                                          line.product_cw_uom)
             line.cw_qty_invoiced = qty
 
-    product_cw_uom = fields.Many2one('uom.uom', string='CW-UOM')
+    product_cw_uom = fields.Many2one('product.uom', string='CW-UOM')
     catch_weight_ok = fields.Boolean(invisible='1', related='product_id.catch_weight_ok')
     product_cw_uom_qty = fields.Float(string='CW-Qty', default=0.0,
                                       digits=dp.get_precision('Product CW Unit of Measure'))
-    cw_qty_invoiced = fields.Float(string='Billed CW Qty', compute='_compute_cw_qty_invoiced',
+    cw_qty_invoiced = fields.Float(compute='_compute_cw_qty_invoiced',
                                    digits=dp.get_precision('Product CW Unit of Measure'))
-    cw_qty_received = fields.Float(string="Received CW Qty", digits=dp.get_precision('Product CW Unit of Measure'),
-                                   copy=False)
+    cw_qty_received = fields.Float(compute='_compute_cw_qty_received',
+                                   digits=dp.get_precision('Product CW Unit of Measure'))
 
     @api.multi
     @api.onchange('product_id')
@@ -151,10 +169,9 @@ class PurchaseOrderLine(models.Model):
                     if res:
                         res[0]['product_cw_uom'] = cw_quant_uom.id
                         res[0]['product_cw_uom_qty'] = cw_product_qty
-                elif self.product_cw_uom.id == cw_quant_uom.id:
-                    if res:
-                        res[0]['product_cw_uom'] = self.product_cw_uom.id
-                        res[0]['product_cw_uom_qty'] = diff_cw_quantity
+                elif self.product_cw_uom.id == cw_quant_uom.id and res:
+                    res[0]['product_cw_uom'] = self.product_cw_uom.id
+                    res[0]['product_cw_uom_qty'] = diff_cw_quantity
                 else:
                     raise UserError(
                         _('You cannot update CW quantity without updating quantity for validated receipts.'))

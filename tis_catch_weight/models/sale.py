@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
-# Copyright (C) 2019-present  Technaureus Info Solutions Pvt. Ltd.(<http://www.technaureus.com/>).
-
+# Copyright (C) 2019-Today  Technaureus Info Solutions Pvt Ltd.(<http://technaureus.com/>).
 
 from odoo import models, fields, api, _
 from odoo.addons import decimal_precision as dp
@@ -41,15 +40,16 @@ class SaleOrderLine(models.Model):
                 lambda r: r.state == 'sale' and float_compare(r.product_cw_uom_qty, values['product_cw_uom_qty'],
                                                               precision_digits=precision) != 0)._update_line_cw_quantity(
                 values)
+
         previous_product_cw_uom_qty = {line.id: line.product_cw_uom_qty for line in so_lines}
         res = super(SaleOrderLine, self).write(values)
         picking = self.order_id.picking_ids.filtered(lambda x: x.state not in ('done'))
         if so_lines and 'product_uom_qty' not in values:
             if not picking:
-                raise ValidationError(_('You cannot change cw quantities!'))
+                raise ValidationError(_('You can not change cw quantities!'))
             else:
                 so_lines.with_context(
-                    previous_product_cw_uom_qty=previous_product_cw_uom_qty)._action_launch_stock_rule()
+                    previous_product_cw_uom_qty=previous_product_cw_uom_qty)._action_launch_procurement_rule()
         return res
 
     def _update_line_cw_quantity(self, values):
@@ -100,7 +100,6 @@ class SaleOrderLine(models.Model):
 
     @api.depends('cw_qty_invoiced', 'cw_qty_delivered', 'product_cw_uom_qty', 'order_id.state')
     def _get_to_invoice_cw_qty(self):
-
         for line in self:
             if line.order_id.state in ['sale', 'done']:
                 if line.product_id.invoice_policy == 'order':
@@ -124,21 +123,21 @@ class SaleOrderLine(models.Model):
                             invoice_line.product_cw_uom_qty, line.product_cw_uom)
             line.cw_qty_invoiced = cw_qty_invoiced
 
-    @api.multi
-    @api.depends('move_ids.state', 'move_ids.scrapped', 'move_ids.cw_qty_done', 'move_ids.product_cw_uom')
+    @api.depends('order_id.state', 'move_ids.state', 'move_ids.cw_qty_done')
     def _compute_cw_qty_delivered(self):
-        super(SaleOrderLine, self)._compute_qty_delivered()
-        for line in self:  # TODO: maybe one day, this should be done in SQL for performance sake
-            if line.qty_delivered_method == 'stock_move':
-                qty = 0.0
-                for move in line.move_ids.filtered(
-                        lambda r: r.state == 'done' and not r.scrapped and line.product_id == r.product_id):
+        for line in self:
+            if line.order_id.state not in ['sale', 'done']:
+                line.cw_qty_delivered = 0.0
+                continue
+            if line.product_id.type not in ['consu', 'product']:
+                line.cw_qty_delivered = line.product_cw_uom_qty
+                continue
+            total = 0.0
+            for move in line.move_ids:
+                if move.state == 'done':
                     if move.location_dest_id.usage == "customer":
-                        if not move.origin_returned_move_id or (move.origin_returned_move_id and move.to_refund):
-                            qty += move.product_cw_uom._compute_quantity(move.product_cw_uom_qty, line.product_cw_uom)
-                    elif move.location_dest_id.usage != "customer" and move.to_refund:
-                        qty -= move.product_cw_uom._compute_quantity(move.product_cw_uom_qty, line.product_cw_uom)
-                line.cw_qty_delivered = qty
+                        total += move.cw_qty_done
+            line.cw_qty_delivered = total
 
     cw_qty_delivered = fields.Float(string='CW Delivered', compute='_compute_cw_qty_delivered', store=True, copy=False,
                                     digits=dp.get_precision('Product CW Unit of Measure'),
@@ -150,11 +149,12 @@ class SaleOrderLine(models.Model):
         compute='_get_invoice_cw_qty', string='CW Invoiced', store=True, readonly=True,
         digits=dp.get_precision('Product CW Unit of Measure'))
 
-    product_cw_uom = fields.Many2one('uom.uom', string='CW-UOM')
+    product_cw_uom = fields.Many2one('product.uom', string='CW-UOM')
     catch_weight_ok = fields.Boolean(invisible='1', related='product_id.catch_weight_ok')
     product_cw_uom_qty = fields.Float(string='CW-Qty', default=0.0,
                                       digits=dp.get_precision('Product CW Unit of Measure'))
-    cw_product_qty = fields.Float(compute='_compute_product_cw_qty', string='CW Quantity')
+    cw_product_qty = fields.Float(compute='_compute_product_cw_qty', string='CW Quantity',
+                                  digits=dp.get_precision('Product CW Unit of Measure'))
 
     @api.multi
     @api.onchange('product_id')
@@ -180,6 +180,7 @@ class SaleOrderLine(models.Model):
         res = super(SaleOrderLine, self)._prepare_procurement_values(group_id)
         precision = self.env['decimal.precision'].precision_get('Product CW Unit of Measure')
         get_param = self.env['ir.config_parameter'].sudo().get_param
+
         for line in self:
             cw_qty = line._get_cw_qty_procurement()
             procurement_uom = line.product_cw_uom
@@ -205,35 +206,50 @@ class SaleOrderLine(models.Model):
                                                                         line.product_id.cw_uom_id)
 
     @api.onchange('product_id')
-    def _onchange_product_id_uom_check_cw_availability(self):
-        if self.product_id._is_cw_product():
-            if not self.product_cw_uom or (
-                    self.product_id.cw_uom_id.category_id.id != self.product_cw_uom.category_id.id):
-                self.product_cw_uom = self.product_id.cw_uom_id
-            self._onchange_product_id_check_cw_availability()
+    def _onchange_product_id_uom_check_availability(self):
+        if not self.env.user.has_group('tis_catch_weight.group_catch_weight') or not self.product_id._is_cw_product():
+            return super(SaleOrderLine, self)._onchange_product_id_uom_check_availability()
+        if not self.product_cw_uom or (
+                self.product_id.cw_uom_id.category_id.id != self.product_cw_uom.category_id.id):
+            self.product_cw_uom = self.product_id.cw_uom_id
+        if not self.product_uom or (
+                self.product_id.uom_id.category_id.id != self.product_uom.category_id.id):
+            self.product_uom = self.product_id.uom_id
+        self._onchange_product_id_check_availability()
 
-    @api.onchange('product_cw_uom_qty', 'product_cw_uom', 'route_id')
-    def _onchange_product_id_check_cw_availability(self):
-        if not self.product_id or not self.product_cw_uom_qty or not self.product_cw_uom:
+    @api.onchange('product_uom_qty', 'product_uom',  'route_id')
+    def _onchange_product_id_check_availability(self):
+        if not self.env.user.has_group('tis_catch_weight.group_catch_weight') or not self.product_id._is_cw_product():
+            return super(SaleOrderLine, self)._onchange_product_id_check_availability()
+        if not self.product_id or not self.product_uom_qty or not self.product_uom:
             self.product_packaging = False
             return {}
         if self.product_id.type == 'product':
-            precision = self.env['decimal.precision'].precision_get('Product CW Unit of Measure')
+            precision = self.env['decimal.precision'].precision_get('Product Unit of Measure')
+            cw_precision = self.env['decimal.precision'].precision_get('Product CW Unit of Measure')
             product = self.product_id.with_context(
                 warehouse=self.order_id.warehouse_id.id,
                 lang=self.order_id.partner_id.lang or self.env.user.lang or 'en_US'
             )
+            product_qty = self.product_uom._compute_quantity(self.product_uom_qty, self.product_id.uom_id)
             cw_product_qty = self.product_cw_uom._compute_quantity(self.product_cw_uom_qty, self.product_id.cw_uom_id)
-            if float_compare(product.cw_virtual_available, cw_product_qty, precision_digits=precision) == -1:
+            if float_compare(product.virtual_available, product_qty, precision_digits=precision) == -1 or float_compare(
+                    product.cw_virtual_available, cw_product_qty, precision_digits=precision) == -1:
                 is_available = self._check_routing()
                 if not is_available:
-                    message = _('You plan to sell %s %s but you only have %s %s available in %s warehouse.') % \
-                              (self.product_cw_uom_qty, self.product_cw_uom.name, product.cw_virtual_available,
+                    message = _(
+                        'You plan to sell %s %s[%s %s] but you only have %s %s[%s %s] available in %s warehouse.') % \
+                              (self.product_uom_qty, self.product_uom.name, self.product_cw_uom_qty,
+                               self.product_cw_uom.name, product.virtual_available, product.uom_id.name,
+                               product.cw_virtual_available,
                                product.cw_uom_id.name, self.order_id.warehouse_id.name)
-                    if (product.cw_virtual_available - self.product_id.cw_virtual_available) == -1:
-                        message += _('\nThere are %s %s available across all warehouses.') % \
-                                   (self.product_id.cw_virtual_available, product.cw_uom_id.name)
-
+                    if float_compare(product.cw_virtual_available, self.product_id.cw_virtual_available,
+                                     precision_digits=cw_precision) == -1 or \
+                            float_compare(product.virtual_available, self.product_id.virtual_available,
+                                          precision_digits=precision) == -1:
+                        message += _('\nThere are %s %s[%s %s] available across all warehouses.') % \
+                                   (self.product_id.virtual_available, product.uom_id.name,
+                                    self.product_id.cw_virtual_available, product.cw_uom_id.name)
                     warning_mess = {
                         'title': _('Not enough inventory!'),
                         'message': message
@@ -252,6 +268,7 @@ class SaleOrderLine(models.Model):
                 cw_qty -= move.product_cw_uom._compute_quantity(move.product_cw_uom_qty, self.product_cw_uom,
                                                                 rounding_method='HALF-UP')
         return cw_qty
+
 
     @api.depends('price_total', 'product_uom_qty')
     def _get_price_reduce_tax(self):
@@ -307,3 +324,31 @@ class SaleOrderLine(models.Model):
             catch_weight.add_to_context(self, {'cw_product_uom': product_cw_uom_id,
                                                'cw_to_uom': to_uom})
         return super(SaleOrderLine, self)._get_display_price(product)
+
+    @api.multi
+    def _check_package(self):
+        if not self.env.user.has_group('tis_catch_weight.group_catch_weight'):
+            return super(SaleOrderLine, self)._check_package()
+        if self.product_id._is_cw_product():
+            default_uom = self.product_id.uom_id
+            pack = self.product_packaging
+            qty = self.product_uom_qty
+            q = default_uom._compute_quantity(pack.qty, self.product_uom)
+            default_cw_uom = pack.cw_uom_id
+            cw_qty = self.product_cw_uom_qty
+            cw_q = default_cw_uom._compute_quantity(pack.cw_qty, self.product_cw_uom)
+            if pack.cw_qty == 0 and (cw_qty % cw_q) == 0:
+                return super(SaleOrderLine, self)._check_package()
+            if qty and q and (qty % q) and cw_qty and cw_q and (cw_qty % cw_q):
+                newqty = qty - (qty % q) + q
+                new_cwqty = cw_qty - (cw_qty % cw_q) + cw_q
+                return {
+                    'warning': {
+                        'title': _('Warning'),
+                        'message': _(
+                            "This product is packaged by %.2f %s[%.2f %s]. You should sell %.2f %s[%.2f %s].") % (
+                                       pack.qty, default_uom.name, pack.cw_qty, default_cw_uom.name, newqty,
+                                       self.product_uom.name, new_cwqty, self.product_cw_uom.name),
+                    },
+                }
+            return {}

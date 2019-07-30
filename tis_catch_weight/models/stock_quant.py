@@ -1,19 +1,22 @@
 # -*- coding: utf-8 -*-
-# Copyright (C) 2019-present  Technaureus Info Solutions Pvt. Ltd.(<http://www.technaureus.com/>).
+# Copyright (C) 2019-Today  Technaureus Info Solutions Pvt Ltd.(<http://technaureus.com/>).
 
 from odoo import api, fields, models, _
-from psycopg2 import OperationalError
-from odoo.exceptions import UserError
+from psycopg2 import OperationalError, Error
+from odoo.exceptions import UserError, ValidationError
+from odoo.osv import expression
+from odoo.addons import decimal_precision as dp
 from odoo.tools.float_utils import float_compare, float_is_zero
 
 
 class StockQuant(models.Model):
     _inherit = 'stock.quant'
 
+    cw_stock_quantity = fields.Float(string='CW Quantity', digits=dp.get_precision('Product CW Unit of Measure'), )
+    cw_stock_reserved_quantity = fields.Float(string='CW Reserved Quantity',
+                                              digits=dp.get_precision('Product CW Unit of Measure'))
     catch_weight_ok = fields.Boolean(invisible='1', related='product_id.catch_weight_ok')
-    cw_stock_quantity = fields.Float(string='CW Quantity')
-    cw_stock_reserved_quantity = fields.Float(string='CW Reserved Quantity')
-    product_cw_uom = fields.Many2one('uom.uom', string='CW-UOM', related='product_id.cw_uom_id')
+    product_cw_uom = fields.Many2one('product.uom', string='CW-UOM', related='product_id.cw_uom_id')
 
     @api.model
     def _update_available_quantity(self, product_id, location_id, quantity, lot_id=None, package_id=None, owner_id=None,
@@ -25,22 +28,9 @@ class StockQuant(models.Model):
         else:
             cw_params = self._context.get('cw_params')
 
-            if 'cw_quantity' in cw_params.keys():
+            if cw_params and 'cw_quantity' in cw_params.keys():
                 cw_quantity = cw_params['cw_quantity']
                 del cw_params['cw_quantity']
-                """ Increase or decrease `reserved_quantity` of a set of quants for a given set of
-                        product_id/location_id/lot_id/package_id/owner_id.
-                        :param product_id:
-                        :param location_id:
-                        :param quantity:
-                        :param lot_id:
-                        :param package_id:
-                        :param owner_id:
-                        :param datetime in_date: Should only be passed when calls to this method are done in
-                                                 order to move a quant. When creating a tracked quant, the
-                                                 current datetime will be used.
-                        :return: tuple (available_quantity, in_date as a datetime)
-                        """
                 self = self.sudo()
                 quants = self._gather(product_id, location_id, lot_id=lot_id, package_id=package_id, owner_id=owner_id,
                                       strict=True)
@@ -99,19 +89,6 @@ class StockQuant(models.Model):
         if not self.env.user.has_group('tis_catch_weight.group_catch_weight'):
             return
         else:
-            """ Increase or decrease `reserved_quantity` of a set of quants for a given set of
-                                    product_id/location_id/lot_id/package_id/owner_id.
-                                    :param product_id:
-                                    :param location_id:
-                                    :param quantity:
-                                    :param lot_id:
-                                    :param package_id:
-                                    :param owner_id:
-                                    :param datetime in_date: Should only be passed when calls to this method are done in
-                                                             order to move a quant. When creating a tracked quant, the
-                                                             current datetime will be used.
-                                    :return: tuple (available_quantity, in_date as a datetime)
-                                    """
             self = self.sudo()
             quants = self._gather(product_id, location_id, lot_id=lot_id, package_id=package_id, owner_id=owner_id,
                                   strict=True)
@@ -160,17 +137,6 @@ class StockQuant(models.Model):
             if cw_params and 'cw_reserved_quantity' in cw_params.keys():
                 cw_quantity = cw_params['cw_reserved_quantity']
                 cw_params.pop('cw_reserved_quantity', None)
-                """ Increase the reserved quantity, i.e. increase `reserved_quantity` for the set of quants
-                        sharing the combination of `product_id, location_id` if `strict` is set to False or sharing
-                        the *exact same characteristics* otherwise. Typically, this method is called when reserving
-                        a move or updating a reserved move line. When reserving a chained move, the strict flag
-                        should be enabled (to reserve exactly what was brought). When the move is MTS,it could take
-                        anything from the stock, so we disable the flag. When editing a move line, we naturally
-                        enable the flag, to reflect the reservation according to the edition.
-
-                        :return: a list of tuples (quant, quantity_reserved) showing on which quant the reservation
-                            was done and how much the system was able to reserve on it
-                        """
                 self = self.sudo()
                 rounding = product_id.uom_id.rounding
                 quants = self._gather(product_id, location_id, lot_id=lot_id, package_id=package_id, owner_id=owner_id,
@@ -240,6 +206,7 @@ class StockQuant(models.Model):
                     if float_is_zero(cw_quantity, precision_rounding=rounding) or float_is_zero(available_cw_quantity,
                                                                                                 precision_rounding=rounding):
                         break
+
                 return reserved_quants
             else:
                 res = super(StockQuant, self)._update_reserved_quantity(product_id, location_id, quantity,
@@ -252,7 +219,6 @@ class StockQuant(models.Model):
     def _update_reserved_cw_quantity(self, product_id, location_id, cw_quantity, quantity, lot_id=None, package_id=None,
                                      owner_id=None,
                                      strict=False):
-
         cw_params = self._context.get('cw_params')
         if not self.env.user.has_group('tis_catch_weight.group_catch_weight'):
             return
@@ -324,7 +290,6 @@ class StockQuant(models.Model):
     @api.model
     def _get_available_cw_quantity(self, product_id, location_id, lot_id=None, package_id=None, owner_id=None,
                                    strict=False, allow_negative=False):
-
         self = self.sudo()
         quants = self._gather(product_id, location_id, lot_id=lot_id, package_id=package_id, owner_id=owner_id,
                               strict=strict)

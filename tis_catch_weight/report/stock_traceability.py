@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Copyright (C) 2019-present  Technaureus Info Solutions Pvt. Ltd.(<http://www.technaureus.com/>).
+# Copyright (C) 2019-present  Technaureus Info Solutions Pvt. Ltd.(<http://www.technaureus.com/>).eus.com/>).
 
 from odoo import api, models, _
 
@@ -9,14 +9,12 @@ class MrpStockReport(models.TransientModel):
 
     @api.model
     def _cw_quantity_to_str(self, from_uom, to_uom, qty):
-
         cw_qty = from_uom._compute_quantity(qty, to_uom, rounding_method='HALF-UP')
         return self.env['ir.qweb.field.float'].value_to_html(cw_qty,
                                                              {'decimal_precision': 'Product CW Unit of Measure'})
 
-    def _make_dict_move(self, level, parent_id, move_line, unfoldable=False):
-
-        res = super(MrpStockReport, self)._make_dict_move(level, parent_id, move_line, unfoldable)
+    def make_dict_move(self, level, parent_id, move_line, stream=False, unfoldable=False):
+        res = super(MrpStockReport, self).make_dict_move(level, parent_id, move_line, stream, unfoldable)
         for data in res:
             if move_line.product_id._is_cw_product():
                 data.update({
@@ -28,10 +26,21 @@ class MrpStockReport(models.TransientModel):
                 })
         return res
 
-    @api.model
-    def _final_vals_to_lines(self, final_vals, level):
+    def make_dict_head(self, level, parent_id, model=False, stream=False, move_line=False):
+        res = super(MrpStockReport, self).make_dict_head(level, parent_id, model, stream, move_line)
+        for data in res:
+            if move_line.product_id._is_cw_product():
+                data.update({
+                    'product_cw_qty_uom': "%s %s" % (
+                        self._cw_quantity_to_str(move_line.product_cw_uom, move_line.product_id.cw_uom_id,
+                                                 move_line.cw_qty_done),
+                        move_line.product_id.cw_uom_id.name),
+                })
+        return res
 
-        lines = super(MrpStockReport, self)._final_vals_to_lines(final_vals, level)
+    @api.model
+    def final_vals_to_lines(self, final_vals, level):
+        lines = super(MrpStockReport, self).final_vals_to_lines(final_vals, level)
         n = 0
         for i in range(0, len(final_vals)):
             lines[n]['columns'].append(final_vals[n].get('product_cw_qty_uom', 0))

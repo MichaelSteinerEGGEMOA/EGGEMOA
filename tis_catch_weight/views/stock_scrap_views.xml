@@ -8,13 +8,11 @@
             <field name="arch" type="xml">
                 <xpath expr="//div[@class='o_row']" position="after">
                     <field name="catch_weight_ok" invisible="1"/>
-                    <label for="scrap_cw_qty" attrs="{'invisible': [('catch_weight_ok','=',False)]}"
-                           groups="tis_catch_weight.group_catch_weight"/>
-                    <div class="o_row">
-                        <field name="scrap_cw_qty" attrs="{'invisible': [('catch_weight_ok','=',False)]}"
-                               groups="tis_catch_weight.group_catch_weight"/>
-                        <field name="product_cw_uom" attrs="{'invisible': [('catch_weight_ok','=',False)]}"
-                               groups="tis_catch_weight.group_catch_weight"/>
+                    <label for="scrap_cw_qty" groups="tis_catch_weight.group_catch_weight"
+                           attrs="{'invisible': [('catch_weight_ok', '=', False)]}"/>
+                    <div class="o_row" attrs="{'invisible': [('catch_weight_ok', '=', False)]}">
+                        <field name="scrap_cw_qty" groups="tis_catch_weight.group_catch_weight"/>
+                        <field name="product_cw_uom" groups="product.group_uom"/>
                     </div>
                 </xpath>
             </field>
@@ -26,12 +24,11 @@
             <field name="arch" type="xml">
                 <xpath expr="//div[@class='o_row']" position="after">
                     <field name="catch_weight_ok" invisible="1"/>
-                    <label for="scrap_cw_qty" attrs="{'invisible': [('catch_weight_ok','=',False)]}"/>
-                    <div class="o_row">
-                        <field name="scrap_cw_qty" attrs="{'invisible': [('catch_weight_ok','=',False)]}"
-                               groups="tis_catch_weight.group_catch_weight"/>
-                        <field name="product_cw_uom" attrs="{'invisible': [('catch_weight_ok','=',False)]}"
-                               groups="tis_catch_weight.group_catch_weight"/>
+                    <label for="scrap_cw_qty" groups="tis_catch_weight.group_catch_weight"
+                           attrs="{'invisible': [('catch_weight_ok', '=', False)]}"/>
+                    <div class="o_row" attrs="{'invisible': [('catch_weight_ok', '=', False)]}">
+                        <field name="scrap_cw_qty" groups="tis_catch_weight.group_catch_weight"/>
+                        <field name="product_cw_uom" groups="tis_catch_weight.group_catch_weight"/>
                     </div>
                 </xpath>
             </field>
@@ -44,9 +41,9 @@
                 <xpath expr="//field[@name='product_uom_id']" position="after">
                     <field name="catch_weight_ok" invisible="1"/>
                     <field name="scrap_cw_qty" groups="tis_catch_weight.group_catch_weight"
-                           attrs="{'invisible': [('catch_weight_ok','=',False)]}"/>
+                           attrs="{'readonly': [('catch_weight_ok', '=', False)]}"/>
                     <field name="product_cw_uom" groups="tis_catch_weight.group_catch_weight"
-                           attrs="{'invisible': [('catch_weight_ok','=',False)]}"/>
+                           attrs="{'readonly': [('catch_weight_ok', '=', False)]}"/>
                 </xpath>
             </field>
         </record>

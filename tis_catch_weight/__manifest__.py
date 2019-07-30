@@ -1,25 +1,24 @@
 # -*- coding: utf-8 -*-
-# Copyright (C) 2019-present  Technaureus Info Solutions Pvt. Ltd.(<http://www.technaureus.com/>).
+# Copyright (C) 2017-Today  Technaureus Info Solutions(<http://technaureus.com/>).
 {
     'name': 'CatchWeight Management',
-    'version': '12.0.2.1.5',
+    'version': '11.0.2.1.1',
     'sequence': 1,
     'category': 'Sales',
     'summary': 'Catch Weight Management',
     'description': """
     This module is for activating Catch weight management
 """,
-    'author': 'Technaureus Info Solutions Pvt. Ltd.',
+    'author': 'Technaureus Info Solutions',
     'website': 'http://www.catchweighterp.com/',
-    'price': 0,
+    'price': 130,
     'currency': 'EUR',
     'license': 'Other proprietary',
     'depends': [
         'sale_stock',
-        'account',
+        'account_invoicing',
         'sale_management',
         'purchase',
-
     ],
     'data': [
         'security/catch_weight_security.xml',
@@ -39,7 +38,6 @@
         'wizard/stock_picking_return_view.xml',
         'wizard/stock_change_product_qty.xml',
         'wizard/set_cw_multiple_products.xml',
-        'wizard/product_replenish_views.xml',
         'wizard/stock_warn_insufficient_qty_views.xml',
         'report/sale_report_template.xml',
         'report/purchase_order_templates.xml',
@@ -52,9 +50,8 @@
         'data/product_data.xml'
     ],
     'images': ['images/main_screenshot.png'],
-    # 'qweb': ['static/src/xml/buy_apps.xml'],
     'installable': True,
     'auto_install': False,
     'application': True
-
 }
+

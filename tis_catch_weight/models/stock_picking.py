@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Copyright (C) 2019-present  Technaureus Info Solutions Pvt. Ltd.(<http://www.technaureus.com/>).
+# Copyright (C) 2019-Today  Technaureus Info Solutions Pvt Ltd.(<http://technaureus.com/>).
 
 from odoo import api, fields, models, _
 from odoo.exceptions import UserError
@@ -10,7 +10,6 @@ class Picking(models.Model):
 
     @api.multi
     def button_validate(self):
-
         for line in self.move_lines:
             if line.product_id._is_cw_product():
                 if line.quantity_done != 0 and line.cw_qty_done == 0:
@@ -21,3 +20,4 @@ class Picking(models.Model):
                 line.cw_qty_done = 0
                 return super(Picking, self).button_validate()
         return super(Picking, self).button_validate()
+
