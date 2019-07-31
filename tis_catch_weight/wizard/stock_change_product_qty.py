@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Copyright (C) 2019-Today  Technaureus Info Solutions Pvt Ltd.(<http://technaureus.com/>).
+# Copyright (C) 2019-present  Technaureus Info Solutions Pvt. Ltd.(<http://www.technaureus.com/>).
 
 from odoo import api, models, fields, tools, _
 from odoo.addons import decimal_precision as dp
@@ -16,7 +16,7 @@ class ProductChangeQuantity(models.TransientModel):
 
     def _action_start_line(self):
         res = super(ProductChangeQuantity, self)._action_start_line()
-        product = self.product_id.with_context(location=self.location_id.id, lot_id=self.lot_id.id)
+        product = self.product_id.with_context(location=self.location_id.id)
         cw_th_qty = product.cw_qty_available
         res.update({
             'cw_product_qty': self.new_cw_quantity,

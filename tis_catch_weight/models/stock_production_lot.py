@@ -1,16 +1,15 @@
 # -*- coding: utf-8 -*-
-# Copyright (C) 2019-Today  Technaureus Info Solutions Pvt Ltd.(<http://technaureus.com/>).
+# Copyright (C) 2019-present  Technaureus Info Solutions Pvt. Ltd.(<http://www.technaureus.com/>).
 
 from odoo import api, fields, models, _
-from odoo.addons import decimal_precision as dp
 from odoo.exceptions import UserError
 
 
 class ProductionLot(models.Model):
     _inherit = 'stock.production.lot'
 
-    product_cw_uom = fields.Many2one('product.uom', 'Unit of Measure', related='product_id.cw_uom_id', store=True)
-    cw_product_qty = fields.Float('Quantity', compute='_cw_product_qty', digits=dp.get_precision('Product CW Unit of Measure'))
+    product_cw_uom = fields.Many2one('uom.uom', 'Unit of Measure', related='product_id.cw_uom_id', store=True)
+    cw_product_qty = fields.Float('CW Quantity', compute='_cw_product_qty')
 
     @api.one
     def _cw_product_qty(self):

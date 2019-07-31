@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
-# Copyright (C) 2019-Today  Technaureus Info Solutions Pvt Ltd.(<http://technaureus.com/>).
+# Copyright (C) 2019-present  Technaureus Info Solutions Pvt. Ltd.(<http://www.technaureus.com/>).
 
 from odoo import models, fields, api, _
-from odoo.exceptions import UserError, ValidationError
+from odoo.exceptions import UserError
 from odoo.tools.float_utils import float_round, float_compare, float_is_zero
 from odoo.addons import decimal_precision as dp
 from . import catch_weight
@@ -11,15 +11,15 @@ from . import catch_weight
 class StockMoveLine(models.Model):
     _inherit = 'stock.move.line'
 
-    product_cw_uom = fields.Many2one('product.uom', string='CW-UOM')
+    product_cw_uom = fields.Many2one('uom.uom', string='CW-UOM')
     catch_weight_ok = fields.Boolean(invisible='1', related='product_id.catch_weight_ok')
     product_cw_uom_qty = fields.Float(string='CW Demand', digits=dp.get_precision('Product CW Unit of Measure'))
     cw_qty_done = fields.Float(string='CW Done', digits=dp.get_precision('Product CW Unit of Measure'))
     ordered_cw_qty = fields.Float('Ordered CW Quantity', digits=dp.get_precision('Product CW Unit of Measure'))
-    cw_product_qty = fields.Float('Real Reserved CW Quantity', compute='_compute_cw_product_qty', inverse='_set_cw_product_qty',
+    cw_product_qty = fields.Float('CW Real Quantity', compute='_compute_cw_product_qty', inverse='_set_cw_product_qty',
                                   digits=0, store=True, )
 
-    @api.onchange('product_id', 'product_uom_id', ' product_cw_uom', 'move_id.product_cw_uom')
+    @api.onchange('product_id', 'product_uom_id', ' product_cw_uom')
     def onchange_product_id(self):
         res = super(StockMoveLine, self).onchange_product_id()
         if self.product_id:
@@ -81,7 +81,6 @@ class StockMoveLine(models.Model):
                 if ml.product_id.type == 'product':
                     Quant = self.env['stock.quant']
                     rounding = ml.product_uom_id.rounding
-
                     if not ml.location_id.should_bypass_reservation() and float_compare(ml.qty_done, ml.product_qty,
                                                                                         precision_rounding=rounding) > 0:
                         extra_qty = ml.qty_done - ml.product_qty
@@ -101,7 +100,7 @@ class StockMoveLine(models.Model):
                     quantity = ml.product_uom_id._compute_quantity(ml.qty_done, ml.move_id.product_id.uom_id,
                                                                    rounding_method='HALF-UP')
                     cw_quantity = ml.product_cw_uom._compute_quantity(ml.cw_qty_done, ml.move_id.product_id.cw_uom_id,
-                                                                      rounding_method='HALF-UP')
+                                                                   rounding_method='HALF-UP')
                     catch_weight.add_to_context(self, {'cw_quantity': -cw_quantity})
                     available_qty, in_date = Quant._update_available_quantity(ml.product_id, ml.location_id, -quantity,
                                                                               lot_id=ml.lot_id,
@@ -122,7 +121,7 @@ class StockMoveLine(models.Model):
                             Quant._update_available_quantity(ml.product_id, ml.location_id, -taken_from_untracked_qty,
                                                              lot_id=False, package_id=ml.package_id,
                                                              owner_id=ml.owner_id)
-                            catch_weight.add_to_context(self, {'cw_quantity': cw_taken_from_untracked_qty})
+                            catch_weight.add_to_context({'cw_quantity': cw_taken_from_untracked_qty})
                             Quant._update_available_quantity(ml.product_id, ml.location_id, taken_from_untracked_qty,
                                                              lot_id=ml.lot_id, package_id=ml.package_id,
                                                              owner_id=ml.owner_id)
@@ -131,7 +130,6 @@ class StockMoveLine(models.Model):
                                                      package_id=ml.result_package_id, owner_id=ml.owner_id,
                                                      in_date=in_date)
                 done_ml |= ml
-
             (self - ml_to_delete).with_context(bypass_reservation_update=True).write({
                 'product_uom_qty': 0.00,
                 'product_cw_uom_qty': 0.00,
@@ -303,26 +301,21 @@ class StockMoveLine(models.Model):
                                                                            order='date, id desc', limit=1)
                         ifcandidates['candidates'] = candidates_receipt
                         if candidates_receipt:
-
                             candidates_dict['remaining_qty'] = candidates_receipt.remaining_qty + -qty_difference,
                             candidates_dict['remaining_value'] = candidates_receipt.remaining_value + (
                                     -qty_difference * candidates_receipt.price_unit),
-
                             correction_value = qty_difference * candidates_receipt.price_unit
                         else:
                             correction_value = qty_difference * move_id.product_id.standard_price
                         move_valss['value'] = move_id.value - correction_value
         res = super(StockMoveLine, self).write(vals)
         cw_context = self._context.get('cw_params')
-
         if 'cw_qty_done' in vals:
-
             for move_id, qty_difference in moves_to_update.items():
                 if move_id.product_id.valuation == 'real_time':
                     cw_context.update({
                         'cw_qty_done_account_move_write': vals['cw_qty_done'] or 0})
                 else:
-
                     if ifcandidates.get('candidates') != 0:
                         candidates = ifcandidates.get('candidates')
                         candidates.write(candidates_dict)
@@ -344,7 +337,6 @@ class StockMoveLine(models.Model):
         if not self.env.user.has_group('tis_catch_weight.group_catch_weight'):
             return super(StockMoveLine, self).create(vals)
         else:
-            cw_params = self._context.get('cw_params')
             if 'cw_qty_done' in vals:
                 catch_weight.add_to_context(self, {'account_quantity_done': vals['cw_qty_done'] or 0})
             vals['ordered_cw_qty'] = vals.get('product_cw_uom_qty')
@@ -363,10 +355,7 @@ class StockMoveLine(models.Model):
                 if ml.state == 'done':
                     if ml.product_id.type == 'product':
                         Quant = self.env['stock.quant']
-                        cw_quantity = ml.product_cw_uom._compute_quantity(ml.cw_qty_done,
-                                                                          ml.move_id.product_id.cw_uom_id,
-                                                                          rounding_method='HALF-UP')
-
+                        cw_quantity = ml.cw_qty_done
                         in_date = None
                         cw_available_qty, in_date = Quant._update_available_cw_quantity(ml.product_id, ml.location_id,
                                                                                         -cw_quantity,

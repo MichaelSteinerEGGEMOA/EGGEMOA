@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Copyright (C) 2018-Today  Technaureus Info Solutions(<http://technaureus.com/>).
+# Copyright (C) 2019-present  Technaureus Info Solutions Pvt. Ltd.(<http://www.technaureus.com/>).
 
 from odoo import api, fields, models, _
 from odoo.exceptions import UserError
@@ -18,9 +18,9 @@ class SetCwMultipleProducts(models.TransientModel):
     purchase_price_base = fields.Selection([('uom', 'UOM'), ('cwuom', 'CW-UOM')], string="Purchase Price Base")
 
     def _default_cw_uom(self):
-        return self.env.ref('product.product_uom_gram').id
+        return self.env.ref('uom.product_uom_gram').id
 
-    cw_uom_id = fields.Many2one('product.uom', string="Catch Weight UOM",
+    cw_uom_id = fields.Many2one('uom.uom', string="Catch Weight UOM",
                                 default=_default_cw_uom)
 
     @api.multi

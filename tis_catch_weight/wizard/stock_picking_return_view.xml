@@ -7,10 +7,10 @@
         <field name="arch" type="xml">
             <xpath expr="//field[@name='uom_id']" position="after">
                 <field name="catch_weight_ok" invisible="1"/>
-                <field name="cw_quantity" groups="tis_catch_weight.group_catch_weight"
-                       attrs="{'readonly': [('catch_weight_ok', '=', False)]}"/>
-                <field name="cw_uom_id" groups="tis_catch_weight.group_catch_weight"
-                       readonly="1"/>
+                <field name="cw_quantity"
+                       groups="tis_catch_weight.group_catch_weight"/>
+                <field name="cw_uom_id" readonly="1"
+                       groups="tis_catch_weight.group_catch_weight"/>
             </xpath>
         </field>
     </record>

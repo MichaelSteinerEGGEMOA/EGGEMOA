@@ -1,5 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
+    <!--    <template id="assets_backend" inherit_id="web.assets_backend" name="Backend Assets cw(used in backend interface)">-->
+    <!--        <xpath expr="." position="inside">-->
+    <!--            <script type="text/javascript" src="/tis_catch_weight/static/src/js/cw_upgrade_fields.js"></script>-->
+    <!--            <script type="text/javascript" src="/tis_catch_weight/static/src/js/cw_form_renderer.js"></script>-->
+    <!--        </xpath>-->
+    <!--    </template>-->
 
     <record id="res_config_settings_view_form" model="ir.ui.view">
         <field name="name">res.config.settings.view.form.inherit.catchweight</field>

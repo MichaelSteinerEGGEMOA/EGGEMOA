@@ -15,7 +15,6 @@ class StockMove(models.Model):
         move.ensure_one()
         if not move.product_id._is_price_based_on_cw('purchase'):
             return super(StockMove, self)._run_fifo(move, quantity=None)
-
         valued_move_lines = move.move_line_ids.filtered(
             lambda
                 ml: ml.location_id._should_be_valued() and not ml.location_dest_id._should_be_valued() and not ml.owner_id)
@@ -24,7 +23,7 @@ class StockMove(models.Model):
             valued_quantity += valued_move_line.product_cw_uom._compute_quantity(valued_move_line.cw_qty_done,
                                                                                  move.product_id.cw_uom_id)
         qty_to_take_on_candidates = quantity or valued_quantity
-        candidates = move.product_id._get_fifo_candidates_in_move()
+        candidates = move.product_id._get_fifo_candidates_in_move_with_company(move.company_id.id)
         new_standard_price = 0
         tmp_value = 0  # to accumulate the value taken on the candidates
         for candidate in candidates:
@@ -54,7 +53,8 @@ class StockMove(models.Model):
         if qty_to_take_on_candidates == 0:
             move.write({
                 'value': -tmp_value if not quantity else move.value or -tmp_value,
-                'price_unit': -tmp_value / (move.product_qty or quantity), })
+                'price_unit': -tmp_value / move.product_qty,
+            })
         elif qty_to_take_on_candidates > 0:
             last_fifo_price = new_standard_price or move.product_id.standard_price
             negative_stock_value = last_fifo_price * -qty_to_take_on_candidates
@@ -108,7 +108,7 @@ class StockMove(models.Model):
                 vals = {
                     'price_unit': price_unit,
                     'value': value if quantity is None or not self.value else self.value,
-                    'remaining_value': value if quantity is None else self.remaining_value + value, }
+                    'remaining_value': value if quantity is None else self.remaining_value + value,}
                 vals['remaining_qty'] = valued_quantity if quantity is None else self.remaining_qty + quantity
 
                 if self.product_id.cost_method == 'standard':
@@ -134,7 +134,7 @@ class StockMove(models.Model):
                         precision_rounding=curr_rounding)
                     self.write({
                         'value': value if quantity is None else self.value + value,
-                        'price_unit': (value / valued_quantity) if valued_quantity != 0 else 0,
+                        'price_unit': value / valued_quantity,
                     })
             elif self._is_dropshipped() or self._is_dropshipped_returned():
                 curr_rounding = self.company_id.currency_id.rounding
@@ -177,6 +177,7 @@ class StockMove(models.Model):
                             move_vals['remaining_value'] = move_id.remaining_value + correction_value
                         elif move_id._is_out() and qty_difference > 0:
                             correction_value = self.env['stock.move']._run_fifo(move_id, quantity=qty_difference)
+                            # no need to adapt `remaining_qty` and `remaining_value` as `_run_fifo` took care of it
                             move_vals['value'] = move_id.value - correction_value
                         elif move_id._is_out() and qty_difference < 0:
                             candidates_receipt = self.env['stock.move'].search(move_id._get_in_domain(),

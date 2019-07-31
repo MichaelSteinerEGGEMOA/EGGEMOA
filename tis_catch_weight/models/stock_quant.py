@@ -1,22 +1,19 @@
 # -*- coding: utf-8 -*-
-# Copyright (C) 2019-Today  Technaureus Info Solutions Pvt Ltd.(<http://technaureus.com/>).
+# Copyright (C) 2019-present  Technaureus Info Solutions Pvt. Ltd.(<http://www.technaureus.com/>).
 
 from odoo import api, fields, models, _
-from psycopg2 import OperationalError, Error
-from odoo.exceptions import UserError, ValidationError
-from odoo.osv import expression
-from odoo.addons import decimal_precision as dp
+from psycopg2 import OperationalError
+from odoo.exceptions import UserError
 from odoo.tools.float_utils import float_compare, float_is_zero
 
 
 class StockQuant(models.Model):
     _inherit = 'stock.quant'
 
-    cw_stock_quantity = fields.Float(string='CW Quantity', digits=dp.get_precision('Product CW Unit of Measure'), )
-    cw_stock_reserved_quantity = fields.Float(string='CW Reserved Quantity',
-                                              digits=dp.get_precision('Product CW Unit of Measure'))
     catch_weight_ok = fields.Boolean(invisible='1', related='product_id.catch_weight_ok')
-    product_cw_uom = fields.Many2one('product.uom', string='CW-UOM', related='product_id.cw_uom_id')
+    cw_stock_quantity = fields.Float(string='CW Quantity')
+    cw_stock_reserved_quantity = fields.Float(string='CW Reserved Quantity')
+    product_cw_uom = fields.Many2one('uom.uom', string='CW-UOM', related='product_id.cw_uom_id')
 
     @api.model
     def _update_available_quantity(self, product_id, location_id, quantity, lot_id=None, package_id=None, owner_id=None,
@@ -27,10 +24,10 @@ class StockQuant(models.Model):
                                                                       in_date=in_date)
         else:
             cw_params = self._context.get('cw_params')
-
-            if cw_params and 'cw_quantity' in cw_params.keys():
+            if 'cw_quantity' in cw_params.keys():
                 cw_quantity = cw_params['cw_quantity']
                 del cw_params['cw_quantity']
+
                 self = self.sudo()
                 quants = self._gather(product_id, location_id, lot_id=lot_id, package_id=package_id, owner_id=owner_id,
                                       strict=True)
@@ -137,6 +134,7 @@ class StockQuant(models.Model):
             if cw_params and 'cw_reserved_quantity' in cw_params.keys():
                 cw_quantity = cw_params['cw_reserved_quantity']
                 cw_params.pop('cw_reserved_quantity', None)
+
                 self = self.sudo()
                 rounding = product_id.uom_id.rounding
                 quants = self._gather(product_id, location_id, lot_id=lot_id, package_id=package_id, owner_id=owner_id,
@@ -206,7 +204,6 @@ class StockQuant(models.Model):
                     if float_is_zero(cw_quantity, precision_rounding=rounding) or float_is_zero(available_cw_quantity,
                                                                                                 precision_rounding=rounding):
                         break
-
                 return reserved_quants
             else:
                 res = super(StockQuant, self)._update_reserved_quantity(product_id, location_id, quantity,
@@ -219,10 +216,12 @@ class StockQuant(models.Model):
     def _update_reserved_cw_quantity(self, product_id, location_id, cw_quantity, quantity, lot_id=None, package_id=None,
                                      owner_id=None,
                                      strict=False):
+
         cw_params = self._context.get('cw_params')
         if not self.env.user.has_group('tis_catch_weight.group_catch_weight'):
             return
         else:
+
             self = self.sudo()
             rounding = product_id.cw_uom_id.rounding
             quants = self._gather(product_id, location_id, lot_id=lot_id, package_id=package_id, owner_id=owner_id,
@@ -290,6 +289,7 @@ class StockQuant(models.Model):
     @api.model
     def _get_available_cw_quantity(self, product_id, location_id, lot_id=None, package_id=None, owner_id=None,
                                    strict=False, allow_negative=False):
+
         self = self.sudo()
         quants = self._gather(product_id, location_id, lot_id=lot_id, package_id=package_id, owner_id=owner_id,
                               strict=strict)

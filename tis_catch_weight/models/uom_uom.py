@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
-# Copyright (C) 2019-present  Technaureus Info Solutions Pvt. Ltd.(<http://www.technaureus.com/>).eus.com/>).
+# Copyright (C) 2019-present  Technaureus Info Solutions Pvt. Ltd.(<http://www.technaureus.com/>).
 
 from odoo import api, fields, models, _
 
 
-class ProductUoM(models.Model):
-    _inherit = 'product.uom'
+class Uom(models.Model):
+    _inherit = 'uom.uom'
 
     @api.multi
     def _compute_price(self, price, to_unit):
@@ -23,4 +23,4 @@ class ProductUoM(models.Model):
                 amount = amount / to_unit.factor
             return amount
         else:
-            return super(ProductUoM, self)._compute_price(price, to_unit)
+            return super(Uom, self)._compute_price(price, to_unit)
