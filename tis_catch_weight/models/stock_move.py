@@ -71,7 +71,6 @@ class StockMove(models.Model):
                 raise UserError("Cannot set the done quantity from this stock move, work directly with the move lines.")
 
     def _prepare_move_line_vals(self, quantity=None, reserved_quant=None):
-
         if not self.env.user.has_group('tis_catch_weight.group_catch_weight'):
             return super(StockMove, self)._prepare_move_line_vals(quantity=quantity, reserved_quant=reserved_quant)
         else:
@@ -186,6 +185,7 @@ class StockMove(models.Model):
 
     def _split(self, qty, restrict_partner_id=False):
         res = super(StockMove, self)._split(qty)
+
         self.with_context(do_not_propagate=True, do_not_unreserve=True, rounding_method='HALF-UP').write(
             {'product_cw_uom_qty': self.cw_qty_done})
         return res

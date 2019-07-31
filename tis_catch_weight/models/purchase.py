@@ -62,7 +62,6 @@ class PurchaseOrderLine(models.Model):
         self.price_unit = price_unit
 
 
-
     @api.depends('product_qty', 'price_unit', 'taxes_id', 'product_cw_uom_qty')
     def _compute_amount(self):
         return super(PurchaseOrderLine, self)._compute_amount()
