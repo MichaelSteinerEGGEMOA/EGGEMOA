@@ -87,6 +87,7 @@ class StockMove(models.Model):
             })
         return res
 
+
     def _run_valuation(self, quantity=None):
         if self.product_id._is_price_based_on_cw('purchase'):
             if quantity != None:
@@ -177,7 +178,6 @@ class StockMove(models.Model):
                             move_vals['remaining_value'] = move_id.remaining_value + correction_value
                         elif move_id._is_out() and qty_difference > 0:
                             correction_value = self.env['stock.move']._run_fifo(move_id, quantity=qty_difference)
-                            # no need to adapt `remaining_qty` and `remaining_value` as `_run_fifo` took care of it
                             move_vals['value'] = move_id.value - correction_value
                         elif move_id._is_out() and qty_difference < 0:
                             candidates_receipt = self.env['stock.move'].search(move_id._get_in_domain(),

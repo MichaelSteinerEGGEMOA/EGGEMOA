@@ -86,6 +86,7 @@ class StockQuant(models.Model):
         if not self.env.user.has_group('tis_catch_weight.group_catch_weight'):
             return
         else:
+
             self = self.sudo()
             quants = self._gather(product_id, location_id, lot_id=lot_id, package_id=package_id, owner_id=owner_id,
                                   strict=True)
@@ -221,7 +222,6 @@ class StockQuant(models.Model):
         if not self.env.user.has_group('tis_catch_weight.group_catch_weight'):
             return
         else:
-
             self = self.sudo()
             rounding = product_id.cw_uom_id.rounding
             quants = self._gather(product_id, location_id, lot_id=lot_id, package_id=package_id, owner_id=owner_id,

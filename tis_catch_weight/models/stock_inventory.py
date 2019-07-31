@@ -105,23 +105,29 @@ class Inventory(models.Model):
         quant_products = self.env['product.product']
         products_to_filter = self.env['product.product']
 
+        # case 0: Filter on company
         if self.company_id:
             domain += ' AND company_id = %s'
             args += (self.company_id.id,)
 
+        # case 1: Filter on One owner only or One product for a specific owner
         if self.partner_id:
             domain += ' AND owner_id = %s'
             args += (self.partner_id.id,)
+        # case 2: Filter on One Lot/Serial Number
         if self.lot_id:
             domain += ' AND lot_id = %s'
             args += (self.lot_id.id,)
+        # case 3: Filter on One product
         if self.product_id:
             domain += ' AND product_id = %s'
             args += (self.product_id.id,)
             products_to_filter |= self.product_id
+        # case 4: Filter on A Pack
         if self.package_id:
             domain += ' AND package_id = %s'
             args += (self.package_id.id,)
+        # case 5: Filter on One product category + Exahausted Products
         if self.category_id:
             categ_products = Product.search([('categ_id', '=', self.category_id.id)])
             domain += ' AND product_id = ANY (%s)'
