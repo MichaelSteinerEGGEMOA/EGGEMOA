@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<templates inherit_id="stock_barcode.template" xml:space="preserve">
+    <t t-extend="stock_barcode_lines_template">
+                <t t-jquery=".o_barcode_line_details" t-operation="replace">
+                    <div class="o_barcode_line_details flex-grow-1 flex-column flex-nowrap">
+                        <div class="o_barcode_line_title pb-1"><i class="fa fa-fw fa-tags"/>
+                            <span class="product-label"><t t-esc="line.display_name"/></span></div>
+                        <div>
+                            <i class="fa fa-fw fa-cube"/>
+                            <span t-attf-class="o_barcode_scanner_qty text-monospace badge #{' '}"> <!-- @SLE: Eventually add contextual classes: "badge-warning", "badge-danger", "badge-success"  -->
+                                <span class="qty-done d-inline-block text-left" t-esc="line.qty_done"/>
+                                <span t-if="line.product_uom_qty" t-esc="'/ ' + line.product_uom_qty"/>
+                            </span>
+                            <span t-if="groups.group_uom" t-esc="line.product_uom_id[1]"/>
+                        </div>
+                        <div t-if="line.catch_weight_ok">
+                            <i class="fa fa-fw fa-cube"/>
+                            <span t-attf-class="o_barcode_scanner_qty text-monospace badge #{' '}"> <!-- @SLE: Eventually add contextual classes: "badge-warning", "badge-danger", "badge-success"  -->
+                                <span class="cw-qty-done d-inline-block text-left" t-esc="line.cw_qty_done"/>
+                                <span t-if="line.product_cw_uom_qty" t-esc="'/ ' + line.product_cw_uom_qty"/>
+                            </span>
+                            <span  t-esc="line.product_cw_uom[1]"/>
+                        </div>
+                        <div t-if="line.package_id || line.result_package_id">
+                            <i class="fa fa-fw fa-truck"/>
+                            <t t-if="line.package_id" t-esc="line.package_id[1]"/>
+                            <span class="fa fa-long-arrow-right"/>
+                            <t t-if="line.result_package_id" t-esc="line.result_package_id[1]"/>
+                        </div>
+                        <div t-if="line.owner_id">
+                            <i class="fa fa-fw fa-user-o"/>
+                            <t t-esc="line.owner_id[1]"/>
+                        </div>
+                        <div t-if="line.product_id.tracking !== 'none'">
+                            <i class="fa fa-barcode"/>
+                            <span class="o_line_lot_name"><t t-if="line.lot_name" t-esc="line.lot_name"/></span>
+                            <span class="o_line_lot_id"><t t-if="! line.lot_name &amp;&amp; line.lot_id &amp;&amp; line.lot_id[1]" t-esc="line.lot_id[1]"/></span>
+                        </div>
+                    </div>
+        </t>
+    </t>
+</templates>
