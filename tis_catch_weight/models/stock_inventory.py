@@ -4,14 +4,14 @@
 from odoo.addons import decimal_precision as dp
 from odoo import api, fields, models, _
 from odoo.tools import float_utils
-from odoo.exceptions import UserError, ValidationError
+from odoo.exceptions import UserError
 
 
 class InventoryLine(models.Model):
     _inherit = "stock.inventory.line"
 
     product_cw_uom_id = fields.Many2one('uom.uom', string='CW-UOM', related='product_id.cw_uom_id', required=True)
-    product_cw_uom_category_id = fields.Many2one(string='Uom category', related='product_cw_uom_id.category_id',
+    product_cw_uom_category_id = fields.Many2one(string='CW Uom category', related='product_cw_uom_id.category_id',
                                                  readonly=True)
     cw_product_qty = fields.Float('Real CW Quantity',
                                   digits=dp.get_precision('Product CW Unit of Measure'), default=0)
@@ -72,11 +72,12 @@ class InventoryLine(models.Model):
             })
         return res
 
-    @api.onchange('product_id', 'location_id', 'product_cw_uom', 'prod_lot_id', 'partner_id', 'package_id')
+    @api.onchange('product_id', 'location_id', 'product_cw_uom_id', 'prod_lot_id', 'partner_id', 'package_id')
     def onchange_cw_quantity_context(self):
         if self.product_id and self.location_id and self.product_id.cw_uom_id.category_id == self.product_cw_uom_id.category_id:
             self._compute_theoretical_cw_qty()
             self.cw_product_qty = self.theoretical_cw_qty
+
 
 class Inventory(models.Model):
     _inherit = "stock.inventory"
@@ -100,40 +101,31 @@ class Inventory(models.Model):
         locations = self.env['stock.location'].search([('id', 'child_of', [self.location_id.id])])
         domain = ' location_id in %s'
         args = (tuple(locations.ids),)
-
         Product = self.env['product.product']
         quant_products = self.env['product.product']
         products_to_filter = self.env['product.product']
 
-        # case 0: Filter on company
         if self.company_id:
             domain += ' AND company_id = %s'
             args += (self.company_id.id,)
-
-        # case 1: Filter on One owner only or One product for a specific owner
         if self.partner_id:
             domain += ' AND owner_id = %s'
             args += (self.partner_id.id,)
-        # case 2: Filter on One Lot/Serial Number
         if self.lot_id:
             domain += ' AND lot_id = %s'
             args += (self.lot_id.id,)
-        # case 3: Filter on One product
         if self.product_id:
             domain += ' AND product_id = %s'
             args += (self.product_id.id,)
             products_to_filter |= self.product_id
-        # case 4: Filter on A Pack
         if self.package_id:
             domain += ' AND package_id = %s'
             args += (self.package_id.id,)
-        # case 5: Filter on One product category + Exahausted Products
         if self.category_id:
             categ_products = Product.search([('categ_id', '=', self.category_id.id)])
             domain += ' AND product_id = ANY (%s)'
             args += (categ_products.ids,)
             products_to_filter |= categ_products
-
         self.env.cr.execute("""SELECT product_id, sum(quantity) as product_qty,  sum(cw_stock_quantity) as cw_product_qty, location_id, lot_id as prod_lot_id, package_id, owner_id as partner_id
                     FROM stock_quant
                     WHERE %s

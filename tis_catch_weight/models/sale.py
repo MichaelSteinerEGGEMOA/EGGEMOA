@@ -65,18 +65,13 @@ class SaleOrderLine(models.Model):
                 msg += _("Invoiced CW Quantity") + ": %s <br/>" % (line.cw_qty_invoiced,)
             msg += "</ul>"
             order.message_post(body=msg)
-        precision = self.env['decimal.precision'].precision_get('Product Unit of Measure')
-        if self.mapped('cw_qty_delivered') and float_compare(values['product_cw_uom_qty'],
-                                                             max(self.mapped('cw_qty_delivered')),
-                                                             precision_digits=precision) == -1:
-            raise UserError('You cannot decrease the ordered CW quantity below the delivered CW quantity.\n'
-                            'Create a return first.')
-        for line in self:
-            pickings = line.order_id.picking_ids.filtered(lambda p: p.state not in ('done', 'cancel'))
-            for picking in pickings:
-                picking.message_post("The CW quantity of %s has been updated from %d to %d in %s" %
-                                     (line.product_id.display_name, line.product_cw_uom_qty,
-                                      values['product_cw_uom_qty'], line.order_id.name))
+        precision = self.env['decimal.precision'].precision_get('Product CW Unit of Measure')
+        line_products = self.filtered(lambda l: l.product_id.type in ['product', 'consu'])
+        if line_products.mapped('cw_qty_delivered') and float_compare(values['product_cw_uom_qty'],
+                                                                   max(line_products.mapped('cw_qty_delivered')),
+                                                                   precision_digits=precision) == -1:
+            raise UserError(_('You cannot decrease the ordered CW quantity below the CW delivered quantity.\n'
+                              'Create a return first.'))
 
     @api.depends('product_uom_qty', 'discount', 'price_unit', 'tax_id', 'product_cw_uom_qty')
     def _compute_amount(self):
@@ -288,7 +283,6 @@ class SaleOrderLine(models.Model):
                 fiscal_position=self.env.context.get('fiscal_position'),
                 cw_uom=self.product_cw_uom.id
             )
-
             self.price_unit = self.env['account.tax']._fix_tax_included_price_company(self._get_display_price(product),
                                                                                       product.taxes_id, self.tax_id,
                                                                                       self.company_id)

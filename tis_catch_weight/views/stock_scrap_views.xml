@@ -6,7 +6,7 @@
             <field name="model">stock.scrap</field>
             <field name="inherit_id" ref="stock.stock_scrap_form_view"/>
             <field name="arch" type="xml">
-                <xpath expr="//div[@class='o_row']" position="after">
+                <xpath expr="//div[hasclass('o_row')]" position="after">
                     <field name="catch_weight_ok" invisible="1"/>
                     <label for="scrap_cw_qty" attrs="{'invisible': [('catch_weight_ok','=',False)]}"
                            groups="tis_catch_weight.group_catch_weight"/>
@@ -24,7 +24,7 @@
             <field name="model">stock.scrap</field>
             <field name="inherit_id" ref="stock.stock_scrap_form_view2"/>
             <field name="arch" type="xml">
-                <xpath expr="//div[@class='o_row']" position="after">
+                <xpath expr="//div[hasclass('o_row')]" position="after">
                     <field name="catch_weight_ok" invisible="1"/>
                     <label for="scrap_cw_qty" attrs="{'invisible': [('catch_weight_ok','=',False)]}"/>
                     <div class="o_row">

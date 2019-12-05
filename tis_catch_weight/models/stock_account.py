@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
-# Copyright (C) 2019-Today  Technaureus Info Solutions Pvt Ltd.(<http://technaureus.com/>).
+# Copyright (C) 2019-Today  Technaureus Info Solutions Pvt. Ltd.(<http://technaureus.com/>).
 
 from odoo import api, fields, models, _
-from odoo.tools.float_utils import float_compare, float_round, float_is_zero
+from odoo.tools.float_utils import float_round
 
 
 class StockMove(models.Model):
@@ -106,12 +106,11 @@ class StockMove(models.Model):
                 vals = {}
                 price_unit = self._get_price_unit()
                 value = price_unit * (quantity or valued_quantity)
-                vals = {
-                    'price_unit': price_unit,
-                    'value': value if quantity is None or not self.value else self.value,
-                    'remaining_value': value if quantity is None else self.remaining_value + value,}
-                vals['remaining_qty'] = valued_quantity if quantity is None else self.remaining_qty + quantity
-
+                vals = {'price_unit': price_unit,
+                        'value': value if quantity is None or not self.value else self.value,
+                        'remaining_value': value if quantity is None else self.remaining_value + value,
+                        'remaining_qty': valued_quantity if quantity is None else self.remaining_qty + quantity
+                        }
                 if self.product_id.cost_method == 'standard':
                     value = self.product_id.standard_price * (quantity or valued_quantity)
                     vals.update({
@@ -135,8 +134,11 @@ class StockMove(models.Model):
                         precision_rounding=curr_rounding)
                     self.write({
                         'value': value if quantity is None else self.value + value,
-                        'price_unit': value / valued_quantity,
                     })
+                    if valued_quantity > 0:
+                        self.write({
+                            'price_unit': value / valued_quantity,
+                        })
             elif self._is_dropshipped() or self._is_dropshipped_returned():
                 curr_rounding = self.company_id.currency_id.rounding
                 if self.product_id.cost_method in ['fifo']:

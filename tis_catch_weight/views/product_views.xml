@@ -18,7 +18,7 @@
                         <field name="list_price" widget='monetary'
                                options="{'currency_field': 'currency_id', 'field_digits': True}" style="width:60%"/>
                         <span t-if="sale_price_base" attrs="{'invisible': [('catch_weight_ok','=',False)]}"
-                              style="font-size:11pt">/
+                              style="font-size:11pt" groups="tis_catch_weight.group_catch_weight">/
                         </span>
                         <field name="sale_price_base" attrs="{'invisible': [('catch_weight_ok','=',False)]}"
                                style="width:30%" groups="tis_catch_weight.group_catch_weight"/>
@@ -30,7 +30,7 @@
                         <field name="standard_price" widget='monetary'
                                options="{'currency_field': 'currency_id', 'field_digits': True}" style="width:60%"/>
                         <span t-if="purchase_price_base" attrs="{'invisible': [('catch_weight_ok','=',False)]}"
-                              style="font-size:11pt">/
+                              style="font-size:11pt" groups="tis_catch_weight.group_catch_weight">/
                         </span>
                         <field name="purchase_price_base" attrs="{'invisible': [('catch_weight_ok','=',False)]}"
                                style="width:30%" groups="tis_catch_weight.group_catch_weight"/>
@@ -130,8 +130,6 @@
                             <span class="o_stat_text">CW Sold</span>
                         </div>
                     </button>
-                </button>
-                <button name="toggle_active" position="before">
                     <button class="oe_stat_button" name="action_view_po" groups="tis_catch_weight.group_catch_weight"
                             type="object" icon="fa-shopping-cart"
                             attrs="{'invisible': ['|',('purchase_ok', '=', False),('catch_weight_ok','=',False)]}"
@@ -159,8 +157,6 @@
                             <span class="o_stat_text">CW On Hand</span>
                         </div>
                     </button>
-                </xpath>
-                <xpath expr="//button[@name='action_view_stock_move_lines']" position="before">
                     <button type="action"
                             name="%(stock.action_stock_level_forecast_report_template)d"
                             attrs="{'invisible':['|',('type', '!=', 'product'),('catch_weight_ok','=',False)]}"
@@ -222,6 +218,24 @@
             </field>
         </record>
 
+        <record id="view_product_variant_kanban_brand" model="ir.ui.view">
+            <field name="name">product variant kanban view: add cw label</field>
+            <field name="model">product.product</field>
+            <field name="inherit_id" ref="product.product_kanban_view"/>
+            <field name="arch" type="xml">
+                <field name="lst_price" position="after">
+                    <field name="catch_weight_ok"/>
+                </field>
+                <xpath expr="//t/div/div[1]" position="before">
+                    <t t-if="record.catch_weight_ok.raw_value" groups="tis_catch_weight.group_catch_weight">
+                        <img align="left" class="img" src="/tis_catch_weight/static/src/img/cw_logo.png"
+                             style="top:-1px;left:-1px; position: absolute; z-index:2;" height="30"
+                             width="30" alt="CW"/>
+                    </t>
+                </xpath>
+            </field>
+        </record>
+
         <record model="ir.ui.view" id="product_template_kanban_cw_onhand">
             <field name="name">Product Template Kanban CW View</field>
             <field name="model">product.template</field>
@@ -231,7 +245,7 @@
                     <field name="catch_weight_ok"/>
                 </field>
                 <xpath expr="//t/div/div[1]" position="before">
-                    <t t-if="record.catch_weight_ok.raw_value">
+                    <t t-if="record.catch_weight_ok.raw_value" groups="tis_catch_weight.group_catch_weight">
                         <img align="left" alt="Image" class="img" src="/tis_catch_weight/static/src/img/cw_logo.png"
                              style="top:-1px;left:-1px; position: absolute; z-index:2;" height="30"
                              width="30"/>
@@ -262,8 +276,8 @@
                            groups="tis_catch_weight.group_catch_weight"/>
                     <div class="o_row" groups="tis_catch_weight.group_catch_weight"
                          attrs="{'invisible': [('catch_weight_ok', '=', False)]}">
-                        <field name="cw_qty" />
-                        <field name="cw_uom_id" />
+                        <field name="cw_qty"/>
+                        <field name="cw_uom_id"/>
                     </div>
                 </xpath>
 

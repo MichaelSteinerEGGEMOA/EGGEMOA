@@ -7,4 +7,6 @@ from odoo import models, fields, api, _
 class AccountMoveLine(models.Model):
     _inherit = 'account.move.line'
 
-    cw_quantity = fields.Float('CW Quantity')
+    cw_quantity = fields.Float(string='CW Quantity')
+    product_cw_uom_id = fields.Many2one('uom.uom', string='CW Unit of Measure')
+    catch_weight_ok = fields.Boolean(invisible='1', related='product_id.catch_weight_ok')

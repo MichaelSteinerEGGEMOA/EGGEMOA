@@ -166,7 +166,6 @@ class StockQuant(models.Model):
                             'It is not possible to unreserve more products of %s than CW Quantity you have  in stock.') % product_id.display_name)
                 else:
                     return reserved_quants
-
                 for quant in quants:
                     if float_compare(quantity, 0, precision_rounding=rounding) > 0:
                         max_quantity_on_quant = quant.quantity - quant.reserved_quantity
@@ -177,7 +176,6 @@ class StockQuant(models.Model):
                         reserved_quants.append((quant, max_quantity_on_quant))
                         quantity -= max_quantity_on_quant
                         available_quantity -= max_quantity_on_quant
-
                         max_cw_quantity_on_quant = quant.cw_stock_quantity - quant.cw_stock_reserved_quantity
                         if float_compare(max_cw_quantity_on_quant, 0, precision_rounding=rounding) <= 0:
                             continue
@@ -192,7 +190,6 @@ class StockQuant(models.Model):
                         reserved_quants.append((quant, -max_quantity_on_quant))
                         quantity += max_quantity_on_quant
                         available_quantity += max_quantity_on_quant
-
                         max_cw_quantity_on_quant = min(quant.cw_stock_reserved_quantity, abs(cw_quantity))
                         quant.cw_stock_reserved_quantity -= max_cw_quantity_on_quant
                         reserved_quants.append((quant, -max_cw_quantity_on_quant))
@@ -217,11 +214,11 @@ class StockQuant(models.Model):
     def _update_reserved_cw_quantity(self, product_id, location_id, cw_quantity, quantity, lot_id=None, package_id=None,
                                      owner_id=None,
                                      strict=False):
-
         cw_params = self._context.get('cw_params')
         if not self.env.user.has_group('tis_catch_weight.group_catch_weight'):
             return
         else:
+
             self = self.sudo()
             rounding = product_id.cw_uom_id.rounding
             quants = self._gather(product_id, location_id, lot_id=lot_id, package_id=package_id, owner_id=owner_id,
@@ -241,27 +238,26 @@ class StockQuant(models.Model):
             elif float_compare(cw_quantity, 0, precision_rounding=rounding) < 0:
                 available_cw_quantity = sum(quants.mapped('cw_stock_reserved_quantity'))
                 available_quantity = sum(quants.mapped('reserved_quantity'))
-                if float_compare(abs(cw_quantity), available_cw_quantity, precision_rounding=rounding) > 0:
+                if float_compare(abs(cw_quantity),available_cw_quantity, precision_rounding=rounding) > 0:
                     raise UserError(_(
                         'It is not possible to unreserve more products of %s than CW Quantity you have in stock.') % product_id.display_name)
             else:
                 return cw_reserved_quants
-
             for quant in quants:
                 if float_compare(cw_quantity, 0, precision_rounding=rounding) > 0:
                     max_cw_quantity_on_quant = quant.cw_stock_quantity - quant.cw_stock_reserved_quantity
                     if product_id.tracking == 'serial':
-                        max_cw_quantity_on_quant = quant.cw_stock_quantity
+                        if quant.lot_id:
+                            max_cw_quantity_on_quant = quant.cw_stock_quantity
+                        else:
+                            continue
                     max_quantity_on_quant = quant.quantity - quant.reserved_quantity
                     if float_compare(max_cw_quantity_on_quant, 0, precision_rounding=rounding) <= 0:
                         continue
                     if float_compare(max_quantity_on_quant, 0, precision_rounding=rounding) <= 0:
                         continue
                     max_cw_quantity_on_quant = min(max_cw_quantity_on_quant, cw_quantity)
-                    if product_id.tracking == 'serial':
-                        max_cw_quantity_on_quant = quant.cw_stock_quantity
                     max_quantity_on_quant = min(max_quantity_on_quant, quantity)
-
                     quant.cw_stock_reserved_quantity += max_cw_quantity_on_quant
                     cw_reserved_quants.append((quant, max_cw_quantity_on_quant))
                     cw_quantity -= max_cw_quantity_on_quant
@@ -280,9 +276,11 @@ class StockQuant(models.Model):
                     available_cw_quantity += max_cw_quantity_on_quant
                     available_quantity += max_quantity_on_quant
 
-                if (cw_quantity == 0) or (available_cw_quantity == 0):
+                if float_is_zero(cw_quantity, precision_rounding=rounding) or float_is_zero(available_cw_quantity,
+                                                                                            precision_rounding=rounding):
                     break
-                if (quantity == 0) or (available_quantity == 0):
+                if float_is_zero(quantity, precision_rounding=rounding) or float_is_zero(available_quantity,
+                                                                                         precision_rounding=rounding):
                     break
             return cw_reserved_quants
 

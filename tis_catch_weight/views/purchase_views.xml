@@ -10,7 +10,7 @@
                     <field name="catch_weight_ok" groups="tis_catch_weight.group_catch_weight" invisible="1"/>
                     <field name="product_cw_uom_qty" groups="tis_catch_weight.group_catch_weight"
                            attrs="{'readonly': [('catch_weight_ok', '=', False)]}"/>
-                    <field name="product_cw_uom" groups="tis_catch_weight.group_catch_weight,product.group_uom"
+                    <field name="product_cw_uom" groups="tis_catch_weight.group_catch_weight,uom.group_uom"
                            attrs="{'readonly': [('catch_weight_ok', '=', False)]}"/>
                     <field name="cw_qty_received" string="Received CW Qty" groups="tis_catch_weight.group_catch_weight"
                            attrs="{'column_invisible': [('parent.state', 'not in', ('purchase', 'done'))],'readonly': [('product_type', 'in', ('consu', 'product'))]}"/>

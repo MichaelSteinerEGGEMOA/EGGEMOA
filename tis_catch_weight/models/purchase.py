@@ -3,7 +3,7 @@
 
 from odoo import models, fields, api, _
 from odoo.addons import decimal_precision as dp
-from odoo.tools import DEFAULT_SERVER_DATETIME_FORMAT, float_compare, float_round
+from odoo.tools import DEFAULT_SERVER_DATETIME_FORMAT
 from odoo.exceptions import UserError
 from odoo.tools.float_utils import float_compare
 from . import catch_weight
@@ -28,6 +28,7 @@ class PurchaseOrder(models.Model):
 class PurchaseOrderLine(models.Model):
     _inherit = 'purchase.order.line'
 
+
     @api.onchange('product_cw_uom_qty', 'product_cw_uom')
     def _onchange_cw_quantity(self):
         if not self.product_id:
@@ -41,15 +42,12 @@ class PurchaseOrderLine(models.Model):
             date=self.order_id.date_order and self.order_id.date_order.date(),
             uom_id=self.product_uom,
             params=params)
-
         if seller or not self.date_planned:
             self.date_planned = self._get_date_planned(seller).strftime(DEFAULT_SERVER_DATETIME_FORMAT)
-
         if not seller:
             if self.product_id.seller_ids.filtered(lambda s: s.name.id == self.partner_id.id):
                 self.price_unit = 0.0
             return
-
         price_unit = self.env['account.tax']._fix_tax_included_price_company(seller.price,
                                                                              self.product_id.supplier_taxes_id,
                                                                              self.taxes_id,
@@ -60,7 +58,6 @@ class PurchaseOrderLine(models.Model):
         if seller and self.product_cw_uom and self.product_id.cw_uom_id != self.product_cw_uom:
             price_unit = self.product_id.cw_uom_id._compute_price(price_unit, self.product_cw_uom)
         self.price_unit = price_unit
-
 
     @api.depends('product_qty', 'price_unit', 'taxes_id', 'product_cw_uom_qty')
     def _compute_amount(self):

@@ -13,13 +13,13 @@ class StockMoveLine(models.Model):
 
     product_cw_uom = fields.Many2one('uom.uom', string='CW-UOM')
     catch_weight_ok = fields.Boolean(invisible='1', related='product_id.catch_weight_ok')
-    product_cw_uom_qty = fields.Float(string='CW Demand', digits=dp.get_precision('Product CW Unit of Measure'))
+    product_cw_uom_qty = fields.Float(string='CW Reserved', digits=dp.get_precision('Product CW Unit of Measure'))
     cw_qty_done = fields.Float(string='CW Done', digits=dp.get_precision('Product CW Unit of Measure'))
     ordered_cw_qty = fields.Float('Ordered CW Quantity', digits=dp.get_precision('Product CW Unit of Measure'))
     cw_product_qty = fields.Float('CW Real Quantity', compute='_compute_cw_product_qty', inverse='_set_cw_product_qty',
                                   digits=0, store=True, )
 
-    @api.onchange('product_id', 'product_uom_id', ' product_cw_uom')
+    @api.onchange('product_id', 'product_uom_id', 'product_cw_uom')
     def onchange_product_id(self):
         res = super(StockMoveLine, self).onchange_product_id()
         if self.product_id:
@@ -100,7 +100,7 @@ class StockMoveLine(models.Model):
                     quantity = ml.product_uom_id._compute_quantity(ml.qty_done, ml.move_id.product_id.uom_id,
                                                                    rounding_method='HALF-UP')
                     cw_quantity = ml.product_cw_uom._compute_quantity(ml.cw_qty_done, ml.move_id.product_id.cw_uom_id,
-                                                                   rounding_method='HALF-UP')
+                                                                      rounding_method='HALF-UP')
                     catch_weight.add_to_context(self, {'cw_quantity': -cw_quantity})
                     available_qty, in_date = Quant._update_available_quantity(ml.product_id, ml.location_id, -quantity,
                                                                               lot_id=ml.lot_id,
@@ -121,7 +121,7 @@ class StockMoveLine(models.Model):
                             Quant._update_available_quantity(ml.product_id, ml.location_id, -taken_from_untracked_qty,
                                                              lot_id=False, package_id=ml.package_id,
                                                              owner_id=ml.owner_id)
-                            catch_weight.add_to_context({'cw_quantity': cw_taken_from_untracked_qty})
+                            catch_weight.add_to_context(self, {'cw_quantity': cw_taken_from_untracked_qty})
                             Quant._update_available_quantity(ml.product_id, ml.location_id, taken_from_untracked_qty,
                                                              lot_id=ml.lot_id, package_id=ml.package_id,
                                                              owner_id=ml.owner_id)
@@ -160,13 +160,14 @@ class StockMoveLine(models.Model):
             return super(StockMoveLine, self).unlink()
 
     def write(self, vals):
+
         if self.env.context.get('bypass_reservation_update'):
             return super(StockMoveLine, self).write(vals)
         Quant = self.env['stock.quant']
         precision = self.env['decimal.precision'].precision_get('Product CW Unit of Measure')
         if 'product_cw_uom_qty' in vals:
             for ml in self.filtered(
-                    lambda m: m.state in ('partially_available', 'assigned') and m.product_id.type == 'product'):
+                    lambda m: m.state in ('partially_available', 'assigned') and m.product_id.type == 'product'and ml.product_id._is_cw_product()):
                 if not ml.location_id.should_bypass_reservation():
                     cw_qty_to_decrease = ml.cw_product_qty - vals['product_cw_uom_qty']
                     qty_to_decrease = ml.product_qty - vals['product_uom_qty']
@@ -277,7 +278,7 @@ class StockMoveLine(models.Model):
         if 'cw_qty_done' in vals:
             for move_line in self.filtered(
                     lambda ml: ml.state == 'done' and (ml.move_id._is_in() or ml.move_id._is_out())):
-                moves_to_update[move_line.move_id] = vals['cw_qty_done'] - move_line.qty_done
+                moves_to_update[move_line.move_id] = vals['cw_qty_done'] - move_line.cw_qty_done
 
             for move_id, qty_difference in moves_to_update.items():
                 if move_id.product_id.cost_method in ['standard', 'average']:
