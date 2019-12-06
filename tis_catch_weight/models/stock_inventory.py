@@ -37,6 +37,7 @@ class InventoryLine(models.Model):
         self.theoretical_cw_qty = theoretical_cw_qty
 
     def _get_move_values(self, qty, location_id, location_dest_id, out):
+        # When creating new inventory adjustment move vlaues are fetching from this function
         res = super(InventoryLine, self)._get_move_values(qty, location_id, location_dest_id, out)
         for line in self:
             if float_utils.float_compare(line.theoretical_cw_qty, line.cw_product_qty,
@@ -87,6 +88,7 @@ class Inventory(models.Model):
     @api.one
     @api.depends('product_id', 'line_ids.cw_product_qty')
     def _compute_total_cw_qty(self):
+        # For single product inventory, total quantity of the counted
         if self.product_id:
             self.total_cw_qty = sum(self.mapped('line_ids').mapped('cw_product_qty'))
         else:
@@ -102,25 +104,33 @@ class Inventory(models.Model):
         domain = ' location_id in %s'
         args = (tuple(locations.ids),)
         Product = self.env['product.product']
+        # Empty recordset of products available in stock_quants
         quant_products = self.env['product.product']
+        # Empty recordset of products to filter
         products_to_filter = self.env['product.product']
 
+        # case 0: Filter on company
         if self.company_id:
             domain += ' AND company_id = %s'
             args += (self.company_id.id,)
+        # case 1: Filter on One owner only or One product for a specific owner
         if self.partner_id:
             domain += ' AND owner_id = %s'
             args += (self.partner_id.id,)
+        # case 2: Filter on One Lot/Serial Number
         if self.lot_id:
             domain += ' AND lot_id = %s'
             args += (self.lot_id.id,)
+        # case 3: Filter on One product
         if self.product_id:
             domain += ' AND product_id = %s'
             args += (self.product_id.id,)
             products_to_filter |= self.product_id
+        # case 4: Filter on A Pack
         if self.package_id:
             domain += ' AND package_id = %s'
             args += (self.package_id.id,)
+        # case 5: Filter on One product category + Exahausted Products
         if self.category_id:
             categ_products = Product.search([('categ_id', '=', self.category_id.id)])
             domain += ' AND product_id = ANY (%s)'
@@ -140,6 +150,7 @@ class Inventory(models.Model):
                     })
         return vals
 
+    # For giving validation in inventory adjustments
     def action_done(self):
         res = super(Inventory, self).action_done()
         for order in self:

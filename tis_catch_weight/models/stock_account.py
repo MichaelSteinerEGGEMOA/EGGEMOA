@@ -10,11 +10,20 @@ class StockMove(models.Model):
 
     @api.model
     def _run_fifo(self, move, quantity=None):
+        # This function is used for inventory valuation. The function calculates the stock
+        # valuation based on the "purchase_price_base" of the product.
+        # Value `move` according to the FIFO rule, meaning we consume the
+        # oldest receipt first. Candidates receipts are marked consumed or free
+        # thanks to their `remaining_qty` and `remaining_value` fields.
+        # By definition, `move` should be an outgoing stock move.
+        # :param quantity: quantity to value instead of `move.product_qty`
+        # :returns: valued amount in absolute
         if not self.env.user.has_group('tis_catch_weight.group_catch_weight'):
             return super(StockMove, self)._run_fifo(move, quantity=None)
         move.ensure_one()
         if not move.product_id._is_price_based_on_cw('purchase'):
             return super(StockMove, self)._run_fifo(move, quantity=None)
+        # Deal with possible move lines that do not impact the valuation.
         valued_move_lines = move.move_line_ids.filtered(
             lambda
                 ml: ml.location_id._should_be_valued() and not ml.location_dest_id._should_be_valued() and not ml.owner_id)
@@ -22,6 +31,7 @@ class StockMove(models.Model):
         for valued_move_line in valued_move_lines:
             valued_quantity += valued_move_line.product_cw_uom._compute_quantity(valued_move_line.cw_qty_done,
                                                                                  move.product_id.cw_uom_id)
+        # Find back incoming stock moves (called candidates here) to value this move.
         qty_to_take_on_candidates = quantity or valued_quantity
         candidates = move.product_id._get_fifo_candidates_in_move_with_company(move.company_id.id)
         new_standard_price = 0
@@ -33,6 +43,9 @@ class StockMove(models.Model):
             else:
                 qty_taken_on_candidate = qty_to_take_on_candidates
 
+            # As applying a landed cost do not update the unit price, naivelly doing
+            # something like qty_taken_on_candidate * candidate.price_unit won't make
+            # the additional value brought by the landed cost go away.
             candidate_price_unit = candidate.remaining_value / candidate.remaining_qty
             value_taken_on_candidate = qty_taken_on_candidate * candidate_price_unit
             candidate_vals = {
@@ -46,13 +59,18 @@ class StockMove(models.Model):
             if qty_to_take_on_candidates == 0:
                 break
 
+        # Update the standard price with the price of the last used candidate, if any.
         if new_standard_price and move.product_id.cost_method == 'fifo':
             move.product_id.sudo().with_context(force_company=move.company_id.id) \
                 .standard_price = new_standard_price
 
+        # If there's still quantity to value but we're out of candidates, we fall in the
+        # negative stock use case. We choose to value the out move at the price of the
+        # last out and a correction entry will be made once `_fifo_vacuum` is called.
         if qty_to_take_on_candidates == 0:
             move.write({
                 'value': -tmp_value if not quantity else move.value or -tmp_value,
+                # outgoing move are valued negatively
                 'price_unit': -tmp_value / move.product_qty,
             })
         elif qty_to_take_on_candidates > 0:
@@ -69,6 +87,7 @@ class StockMove(models.Model):
         return tmp_value
 
     def _prepare_account_move_line(self, qty, cost, credit_account_id, debit_account_id):
+        # map cw values to account move line
         res = super(StockMove, self)._prepare_account_move_line(qty, cost, credit_account_id, debit_account_id)
         cw_quantity = self.env.context.get('forced_quantity', self.cw_product_qty)
         cw_quantity = cw_quantity if self._is_in() else -1 * cw_quantity
@@ -87,6 +106,10 @@ class StockMove(models.Model):
             })
         return res
 
+    # def write(self, vals):
+    # --------------------------------------------------------------
+    #   above case to be done    write
+    # --------------------------------------------------------------
 
     def _run_valuation(self, quantity=None):
         if self.product_id._is_price_based_on_cw('purchase'):
@@ -103,6 +126,8 @@ class StockMove(models.Model):
                 for valued_move_line in valued_move_lines:
                     valued_quantity += valued_move_line.product_uom_id._compute_quantity(valued_move_line.cw_qty_done,
                                                                                          self.product_id.uom_id)
+                # Note: we always compute the fifo `remaining_value` and `remaining_qty` fields no
+                # matter which cost method is set, to ease the switching of cost method.
                 vals = {}
                 price_unit = self._get_price_unit()
                 value = price_unit * (quantity or valued_quantity)
@@ -124,6 +149,7 @@ class StockMove(models.Model):
                         ml: ml.location_id._should_be_valued() and not ml.location_dest_id._should_be_valued() and not ml.owner_id)
                 valued_quantity = 0
                 for valued_move_line in valued_move_lines:
+                    # -----qty_done
                     valued_quantity += valued_move_line.product_cw_uom._compute_quantity(valued_move_line.cw_qty_done,
                                                                                          self.product_id.cw_uom_id)
                 self.env['stock.move']._run_fifo(self, quantity=quantity)
@@ -139,14 +165,21 @@ class StockMove(models.Model):
                         self.write({
                             'price_unit': value / valued_quantity,
                         })
+                    # ------------------------------------------------------------------------#
+                    # Here float division error occurs when the cw done quantity is zero     #
+                    # ------------------------------------------------------------------------#
             elif self._is_dropshipped() or self._is_dropshipped_returned():
                 curr_rounding = self.company_id.currency_id.rounding
                 if self.product_id.cost_method in ['fifo']:
                     price_unit = self._get_price_unit()
+                    # see test_dropship_fifo_perpetual_anglosaxon_ordered
                     self.product_id.standard_price = price_unit
                 else:
                     price_unit = self.product_id.standard_price
+                # -------bellow-----
                 value = float_round(self.cw_product_qty * price_unit, precision_rounding=curr_rounding)
+                # In move have a positive value, out move have a negative value, let's arbitrary say
+                # dropship are positive.
                 self.write({
                     'value': value if self._is_dropshipped() else -value,
                     'price_unit': price_unit if self._is_dropshipped() else -price_unit,
@@ -180,6 +213,7 @@ class StockMove(models.Model):
                             move_vals['remaining_value'] = move_id.remaining_value + correction_value
                         elif move_id._is_out() and qty_difference > 0:
                             correction_value = self.env['stock.move']._run_fifo(move_id, quantity=qty_difference)
+                            # no need to adapt `remaining_qty` and `remaining_value` as `_run_fifo` took care of it
                             move_vals['value'] = move_id.value - correction_value
                         elif move_id._is_out() and qty_difference < 0:
                             candidates_receipt = self.env['stock.move'].search(move_id._get_in_domain(),
@@ -198,6 +232,9 @@ class StockMove(models.Model):
 
                     if move_id.product_id.valuation == 'real_time':
                         move_id.with_context(force_valuation_amount=correction_value, forced_quantity=qty_difference)
+                        # --------------------------------------------------------------------#
+                        # clear this case of context                                          #
+                        # --------------------------------------------------------------------#
                     if qty_difference > 0:
                         move_id.product_price_update_before_done(forced_qty=qty_difference)
         return super(StockMove, self)._account_entry_move()

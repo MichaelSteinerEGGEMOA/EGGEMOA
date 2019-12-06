@@ -2,7 +2,7 @@
 # Copyright (C) 2019-present  Technaureus Info Solutions Pvt. Ltd.(<http://www.technaureus.com/>).
 {
     'name': 'CatchWeight Management',
-    'version': '12.0.2.3.2',
+    'version': '12.0.2.3.4',
     'sequence': 1,
     'category': 'Inventory',
     'summary': 'Catchw8 - Catch Weight Management - Dual Units of Measure',
@@ -50,6 +50,7 @@
         'data/product_data.xml'
     ],
     'images': ['images/main_screenshot.png'],
+    # 'qweb': ['static/src/xml/buy_apps.xml'],
     'installable': True,
     'auto_install': False,
     'application': True

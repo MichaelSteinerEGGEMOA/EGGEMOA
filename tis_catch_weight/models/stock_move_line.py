@@ -21,6 +21,7 @@ class StockMoveLine(models.Model):
 
     @api.onchange('product_id', 'product_uom_id', 'product_cw_uom')
     def onchange_product_id(self):
+        # When changing product id cw uom also needs to be change.
         res = super(StockMoveLine, self).onchange_product_id()
         if self.product_id:
             self.product_cw_uom = self.product_id.cw_uom_id.id
@@ -31,9 +32,11 @@ class StockMoveLine(models.Model):
     @api.one
     @api.depends('product_id', 'product_cw_uom', 'product_cw_uom_qty')
     def _compute_cw_product_qty(self):
+        # Compute real cw quantity as cw demand
         self.cw_product_qty = self.product_cw_uom_qty
 
     def _set_cw_product_qty(self):
+        # Set User error warning when trying to edit cw real quantity manually
         raise UserError(_(
             'The requested operation cannot be processed because of a programming error setting the'
             ' `CW Product_QTY` field instead of the `product_cw_uom_qty`.'))
@@ -43,8 +46,21 @@ class StockMoveLine(models.Model):
             return super(StockMoveLine, self)._action_done()
         else:
             cw_params = self._context.get('cw_params')
+            # This method is called during a move's `action_done`. It'll actually move a quant from
+            #        the source location to the destination location, and unreserve if needed in the source
+            #        location.
+            #
+            #        This method is intended to be called on all the move lines of a move. This method is not
+            #        intended to be called when editing a `done` move (that's what the override of `write` here
+            #        is done.
+            # First, we loop over all the move lines to do a preliminary check: `cw_qty_done` should not
+            # be negative and, according to the presence of a picking type or a linked inventory
+            # adjustment, enforce some rules on the `lot_id` field. If `cw_qty_done` is null, we unlink
+            # the line. It is mandatory in order to free the reservation and correctly apply
+            # `action_done` on the next move lines.
             ml_to_delete = self.env['stock.move.line']
             for ml in self:
+                # Check here if `ml.qty_done` respects the rounding of `ml.product_uom_id`.
                 uom_qty = float_round(ml.qty_done, precision_rounding=ml.product_uom_id.rounding,
                                       rounding_method='HALF-UP')
                 precision_digits = self.env['decimal.precision'].precision_get('Product CW Unit of Measure')
@@ -60,14 +76,22 @@ class StockMoveLine(models.Model):
                         picking_type_id = ml.move_id.picking_type_id
                         if picking_type_id:
                             if picking_type_id.use_create_lots:
+                                # If a picking type is linked, we may have to create a production lot on
+                                # the fly before assigning it to the move line if the user checked both
+                                # `use_create_lots` and `use_existing_lots`.
                                 if ml.lot_name and not ml.lot_id:
                                     lot = self.env['stock.production.lot'].create(
                                         {'name': ml.lot_name, 'product_id': ml.product_id.id}
                                     )
                                     ml.write({'lot_id': lot.id})
                             elif not picking_type_id.use_create_lots and not picking_type_id.use_existing_lots:
+                                # If the user disabled both `use_create_lots` and `use_existing_lots`
+                                # checkboxes on the picking type, he's allowed to enter tracked
+                                # products without a `lot_id`.
                                 continue
                         elif ml.move_id.inventory_id:
+                            # If an inventory adjustment is linked, the user is allowed to enter
+                            # tracked products without a `lot_id`.
                             continue
                         if not ml.lot_id:
                             raise UserError(_('You need to supply a lot/serial number for %s.') % ml.product_id.name)
@@ -76,27 +100,34 @@ class StockMoveLine(models.Model):
                 else:
                     ml_to_delete |= ml
             ml_to_delete.unlink()
+            # Now, we can actually move the quant.
             done_ml = self.env['stock.move.line']
             for ml in self - ml_to_delete:
                 if ml.product_id.type == 'product':
                     Quant = self.env['stock.quant']
                     rounding = ml.product_uom_id.rounding
+                    # if this move line is force assigned, unreserve elsewhere if needed
                     if not ml.location_id.should_bypass_reservation() and float_compare(ml.qty_done, ml.product_qty,
                                                                                         precision_rounding=rounding) > 0:
                         extra_qty = ml.qty_done - ml.product_qty
                         ml._free_reservation(ml.product_id, ml.location_id, extra_qty, lot_id=ml.lot_id,
                                              package_id=ml.package_id, owner_id=ml.owner_id, ml_to_ignore=done_ml)
+                    # unreserve what's been reserved
                     if not ml.location_id.should_bypass_reservation() and ml.product_id.type == 'product' and ml.product_qty:
                         try:
+                            # function is called from here!!!!!!!!!!!!!!!!!!!!
                             catch_weight.add_to_context(self, {'cw_reserved_quantity': -ml.cw_product_qty})
                             Quant._update_reserved_quantity(ml.product_id, ml.location_id, -ml.product_qty,
                                                             lot_id=ml.lot_id, package_id=ml.package_id,
                                                             owner_id=ml.owner_id, strict=True)
+                            # update reserved quantity in case of internal transfer
                         except UserError:
+                            # params.update({'cw_reserved_quantity': -ml.cw_product_qty})
                             catch_weight.add_to_context(self, {'cw_reserved_quantity': -ml.cw_product_qty})
                             Quant._update_reserved_quantity(ml.product_id, ml.location_id, -ml.product_qty,
                                                             lot_id=False,
                                                             package_id=ml.package_id, owner_id=ml.owner_id, strict=True)
+                    # move what's been actually done
                     quantity = ml.product_uom_id._compute_quantity(ml.qty_done, ml.move_id.product_id.uom_id,
                                                                    rounding_method='HALF-UP')
                     cw_quantity = ml.product_cw_uom._compute_quantity(ml.cw_qty_done, ml.move_id.product_id.cw_uom_id,
@@ -107,6 +138,7 @@ class StockMoveLine(models.Model):
                                                                               package_id=ml.package_id,
                                                                               owner_id=ml.owner_id)
                     if available_qty < 0 and ml.lot_id:
+                        # see if we can compensate the negative quants with some untracked quants
                         untracked_qty = Quant._get_available_quantity(ml.product_id, ml.location_id, lot_id=False,
                                                                       package_id=ml.package_id, owner_id=ml.owner_id,
                                                                       strict=True)
@@ -130,6 +162,7 @@ class StockMoveLine(models.Model):
                                                      package_id=ml.result_package_id, owner_id=ml.owner_id,
                                                      in_date=in_date)
                 done_ml |= ml
+            # Reset the reserved quantity as we just moved it to the destination location.
             (self - ml_to_delete).with_context(bypass_reservation_update=True).write({
                 'product_uom_qty': 0.00,
                 'product_cw_uom_qty': 0.00,
@@ -222,6 +255,7 @@ class StockMoveLine(models.Model):
                         new_product_cw_qty = sum([x[1] for x in q])
                     except UserError:
                         if updates.get('lot_id'):
+                            # If we were not able to reserve on tracked quants, we can use untracked ones.
                             try:
                                 q = Quant._update_reserved_cw_quantity(ml.product_id,
                                                                        updates.get('location_id', ml.location_id),
@@ -238,12 +272,14 @@ class StockMoveLine(models.Model):
                         ml.with_context(bypass_reservation_update=True).product_cw_uom_qty = new_product_uom_qty
         if updates or 'cw_qty_done' in vals:
             for ml in self.filtered(lambda ml: ml.move_id.state == 'done' and ml.product_id.type == 'product'):
+                # undo the original move line
                 cw_qty_done_orig = ml.cw_qty_done
                 in_date = Quant._update_available_cw_quantity(ml.product_id, ml.location_dest_id, -cw_qty_done_orig,
                                                               lot_id=ml.lot_id,
                                                               package_id=ml.result_package_id, owner_id=ml.owner_id)[1]
                 Quant._update_available_cw_quantity(ml.product_id, ml.location_id, cw_qty_done_orig, lot_id=ml.lot_id,
                                                     package_id=ml.package_id, owner_id=ml.owner_id, in_date=in_date)
+                # move what's been actually done
                 product_id = ml.product_id
                 location_id = updates.get('location_id', ml.location_id)
                 location_dest_id = updates.get('location_dest_id', ml.location_dest_id)
@@ -271,6 +307,9 @@ class StockMoveLine(models.Model):
                     Quant._update_available_cw_quantity(product_id, location_dest_id, cw_quantity, lot_id=lot_id,
                                                         package_id=result_package_id, owner_id=owner_id,
                                                         in_date=in_date)
+        # ----------------------------------------------#
+        #  bellow codes for account move write          #
+        # ----------------------------------------------#
         moves_to_update = {}
         candidates_dict = {}
         move_valss = {}
@@ -296,6 +335,7 @@ class StockMoveLine(models.Model):
                         move_valss['remaining_value'] = move_id.remaining_value + correction_value
                     elif move_id._is_out() and qty_difference > 0:
                         correction_value = self.env['stock.move']._run_fifo(move_id, quantity=qty_difference)
+                        # no need to adapt `remaining_qty` and `remaining_value` as `_run_fifo` took care of it
                         move_valss['value'] = move_id.value - correction_value
                     elif move_id._is_out() and qty_difference < 0:
                         candidates_receipt = self.env['stock.move'].search(move_id._get_in_domain(),
@@ -317,11 +357,17 @@ class StockMoveLine(models.Model):
                     cw_context.update({
                         'cw_qty_done_account_move_write': vals['cw_qty_done'] or 0})
                 else:
+                    # if not move_id.product_id.cost_method in ['standard', 'average']:
+                    #     if move_id._is_out() and qty_difference < 0:
+                    #         candidates_receipt = self.env['stock.move'].search(move_id._get_in_domain(), order='date, id desc', limit=1)
+                    #         if candidates_receipt:
+                    #             candidates_receipt.write(candidates_dict)
                     if ifcandidates.get('candidates') != 0:
                         candidates = ifcandidates.get('candidates')
                         candidates.write(candidates_dict)
                 move_id.write(move_valss)
 
+        # Update scrap object linked to move_lines to the new quantity.
         if 'cw_qty_done' in vals:
             for move in self.mapped('move_id'):
                 if move.scrapped:
@@ -335,6 +381,7 @@ class StockMoveLine(models.Model):
 
     @api.model
     def create(self, vals):
+        # create flag will be one if there is no move id in the vals
         if not self.env.user.has_group('tis_catch_weight.group_catch_weight'):
             return super(StockMoveLine, self).create(vals)
         else:
@@ -342,6 +389,9 @@ class StockMoveLine(models.Model):
                 catch_weight.add_to_context(self, {'account_quantity_done': vals['cw_qty_done'] or 0})
             vals['ordered_cw_qty'] = vals.get('product_cw_uom_qty')
             create_flag = 0
+            # If the move line is directly create on the picking view.
+            # If this picking is already done we should generate an
+            # associated done move.
             if 'picking_id' in vals and not vals.get('move_id'):
                 picking = self.env['stock.picking'].browse(vals['picking_id'])
                 if picking.state == 'done':
@@ -354,6 +404,7 @@ class StockMoveLine(models.Model):
                         'product_cw_uom': vals['product_cw_uom'],
                     })
                 if ml.state == 'done':
+                    # In case of scrap the function enters here!!!
                     if ml.product_id.type == 'product':
                         Quant = self.env['stock.quant']
                         cw_quantity = ml.cw_qty_done
@@ -364,6 +415,7 @@ class StockMoveLine(models.Model):
                                                                                         package_id=ml.package_id,
                                                                                         owner_id=ml.owner_id)
                         if cw_available_qty < 0 and ml.lot_id:
+                            # see if we can compensate the negative quants with some untracked quants
                             untracked_cw_qty = Quant._get_available_cw_quantity(ml.product_id, ml.location_id,
                                                                                 lot_id=False, package_id=ml.package_id,
                                                                                 owner_id=ml.owner_id, strict=True)

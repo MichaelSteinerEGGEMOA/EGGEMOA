@@ -12,6 +12,7 @@ class StockScrap(models.Model):
     scrap_cw_qty = fields.Float(string='CW Quantity', states={'done': [('readonly', True)]})
 
     def _prepare_move_values(self):
+        # Update cw fields to move values to create new move
 
         res = super(StockScrap, self)._prepare_move_values()
         res.update({
@@ -28,6 +29,7 @@ class StockScrap(models.Model):
 
     @api.onchange('product_id')
     def onchange_product_id(self):
+        # When changing product needs update corresponding cw-uom
 
         res = super(StockScrap, self).onchange_product_id()
         self.product_cw_uom = self.product_id.cw_uom_id.id
