@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data>
+        <record id="stock_move_line_product_selector_cw" model="ir.ui.view">
+            <field name="name">stock.product.selector</field>
+            <field name="model">stock.move.line</field>
+            <field name="inherit_id" ref="stock_barcode.stock_move_line_product_selector"/>
+            <field name="arch" type="xml">
+                <xpath expr="//field[@name='product_uom_qty']" position="after">
+                    <field name="catch_weight_ok" invisible="1"/>
+                    <field name="product_cw_uom_qty" invisible="1"/>
+                    <!--                    <field name="cw_qty_done" string="CW Done"-->
+                    <!--                           attrs="{'readonly': ['|', '|','|', ('is_initial_demand_editable', '=', True), '&amp;',-->
+                    <!--                            ('state', '=', 'done'), ('is_locked', '=', True), '&amp;', ('package_level_id', '!=', False),-->
+                    <!--                            ('parent.picking_type_entire_packs', '=', True), ('catch_weight_ok', '=', False)]}"-->
+                    <!--                           groups="tis_catch_weight.group_catch_weight"/>-->
+                    <!--                    <field name="product_cw_uom"-->
+                    <!--                           attrs="{'readonly': ['|','|', ('product_uom_qty', '!=', 0.0),-->
+                    <!--                           '&amp;', ('package_level_id', '!=', False), ('parent.picking_type_entire_packs', '=', True), ('catch_weight_ok', '=', False)]}"-->
+                    <!--                           groups="tis_catch_weight.group_catch_weight"/>-->
+                </xpath>
+                <xpath expr="//field[@name='product_uom_id']" position="after">
+                    <field name="cw_qty_done" options='{"type": "number"}' string="CW Quantity"
+                           attrs="{'invisible': [('catch_weight_ok', '=', False)]}"/>
+                    <field name="product_cw_uom"
+                           attrs="{'readonly': [('product_cw_uom_qty', '!=', 0.0)], 'invisible': [('catch_weight_ok', '=', False)]}"/>
+                </xpath>
+
+            </field>
+        </record>
+    </data>
+</odoo>
