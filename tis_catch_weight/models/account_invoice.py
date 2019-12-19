@@ -14,6 +14,9 @@ class AccountInvoiceLine(models.Model):
                  'product_id', 'invoice_id.partner_id', 'invoice_id.currency_id', 'invoice_id.company_id',
                  'invoice_id.date_invoice', 'invoice_id.date', 'product_cw_uom_qty')
     def _compute_price(self):
+        # phase one optimised
+        # Compute subtotal on the basis of catch weight uom if price based on cw-uom
+        #         otherwise compute on the basis of uom
         if not self.product_id._is_cw_product():
             return super(AccountInvoiceLine, self)._compute_price()
         currency = self.invoice_id and self.invoice_id.currency_id or None
@@ -47,6 +50,7 @@ class AccountInvoiceLine(models.Model):
 
     @api.onchange('product_cw_uom')
     def _onchange_cw_uom(self):
+        # validation for CW uom quantity
         warning = {}
         result = {}
         if self.product_id.cw_uom_id.category_id.id != self.product_cw_uom.category_id.id:
@@ -73,6 +77,7 @@ class AccountInvoice(models.Model):
     _inherit = 'account.invoice'
 
     def _prepare_invoice_line_from_po_line(self, line):
+        # map cw values from po line to invoice line when create invoice from PO.
         res = super(AccountInvoice, self)._prepare_invoice_line_from_po_line(line)
         if line.product_id.purchase_method == 'purchase':
             qty = line.product_cw_uom_qty - line.cw_qty_invoiced
@@ -86,6 +91,7 @@ class AccountInvoice(models.Model):
 
     @api.model
     def invoice_line_move_line_get(self):
+        # map cw values to account move line, this function is called from 'action_move_create'
         res = super(AccountInvoice, self).invoice_line_move_line_get()
         for line in self.invoice_line_ids:
             if line.quantity == 0:
@@ -97,6 +103,8 @@ class AccountInvoice(models.Model):
 
     @api.model
     def tax_line_move_line_get(self):
+        # map cw values to create move lines (one per invoice line + eventual taxes and analytic lines)
+        # this function is called from 'action_move_create'
         res = super(AccountInvoice, self).tax_line_move_line_get()
         if len(res) >= 1:
             res[0].update({
@@ -111,7 +119,9 @@ class AccountInvoice(models.Model):
         tax_grouped = {}
         round_curr = self.currency_id.round
         for line in self.invoice_line_ids:
+            # for checking price based on cw or not,determine invoice type.
             inv_type = 'purchase' if line.invoice_id.type in ['in_invoice', 'in_refund'] else 'sale'
+            # if price based on cw, then cw value will bwe taken from invoice line.else, normal value will be taken.
             quantity = line.product_cw_uom_qty if line.product_id._is_price_based_on_cw(inv_type) else line.quantity
             if not line.account_id:
                 continue

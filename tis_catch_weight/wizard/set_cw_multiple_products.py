@@ -13,7 +13,8 @@ class SetCwMultipleProducts(models.TransientModel):
     sale_price_base_ok = fields.Boolean(string="Sale Price Based On", default=False)
     purchase_price_base_ok = fields.Boolean(string="Purchase Price Based On", default=False)
     cw_uom_id_ok = fields.Boolean(string="CW Unit Of Measure", default=False)
-    catch_weight = fields.Selection([('yes', 'YES'), ('no', 'NO')], string="Sale Price Base")
+    catch_weight = fields.Selection([('yes', 'Catch Weight'), ('no', 'Non-Catch Weight')],
+                                    string="Convert Prodcut to CW/not")
     sale_price_base = fields.Selection([('uom', 'UOM'), ('cwuom', 'CW-UOM')], string="Sale Price Base")
     purchase_price_base = fields.Selection([('uom', 'UOM'), ('cwuom', 'CW-UOM')], string="Purchase Price Base")
 

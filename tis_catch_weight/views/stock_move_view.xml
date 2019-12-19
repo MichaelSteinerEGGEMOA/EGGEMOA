@@ -146,8 +146,8 @@
                            ('catch_weight_ok', '=', False)]}"
                        required="True" force_save="1" groups="tis_catch_weight.group_catch_weight"/>
                 <field name="product_cw_uom"
-                       attrs="{'readonly': ['|',('state', '!=', 'draft'), ('additional', '=', False),
-                           ('catch_weight_ok', '=', False)]}" force_save="1"
+                       attrs="{'readonly': ['|',('catch_weight_ok', '=', False),('state', '!=', 'draft'),
+                       ('additional', '=', False)]}" force_save="1"
                        groups="tis_catch_weight.group_catch_weight"/>
             </xpath>
         </field>

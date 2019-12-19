@@ -9,10 +9,13 @@ class Uom(models.Model):
 
     @api.multi
     def _compute_price(self, price, to_unit):
+        # cw params are updated from for computing the
         cw_params = self._context.get('cw_params')
         if cw_params and 'cw_product_uom' in cw_params and 'cw_to_uom' in cw_params:
             cw_product_uom = cw_params.get('cw_product_uom')
             to_unit = cw_params.get('cw_to_uom')
+            # cw_params.pop('cw_product_uom', None)
+            # cw_params.pop('cw_to_uom', None)
             cw_product_uom.ensure_one()
             if not cw_product_uom or not price or not to_unit or cw_product_uom == to_unit:
                 return price

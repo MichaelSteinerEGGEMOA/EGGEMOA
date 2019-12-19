@@ -3,7 +3,7 @@
 
 from odoo import models, fields, api, _
 from odoo.addons import decimal_precision as dp
-from odoo.tools import DEFAULT_SERVER_DATETIME_FORMAT, float_compare, float_round
+from odoo.tools import DEFAULT_SERVER_DATETIME_FORMAT
 from odoo.exceptions import UserError
 from odoo.tools.float_utils import float_compare
 from . import catch_weight
@@ -14,6 +14,10 @@ class PurchaseOrder(models.Model):
 
     @api.multi
     def button_confirm(self):
+        # Set User error warning in two cases:
+        #     case 1:If you enter quantity without entering cw quantity.
+        #     case 2:If you enter cw quantity without entering quantity.
+        # These will be consider only if the product is catch weight.
         for line in self.order_line:
             if line.product_id._is_cw_product():
                 if line.product_cw_uom_qty == 0 and line.product_qty != 0:
@@ -28,8 +32,18 @@ class PurchaseOrder(models.Model):
 class PurchaseOrderLine(models.Model):
     _inherit = 'purchase.order.line'
 
+    # @api.onchange('product_qty', 'product_uom')
+    # def _onchange_quantity(self):
+    #     if not self.product_id:
+    #         return
+    #     if not self.product_id.cw_uom_id == self.product_cw_uom and self.product_id._is_price_based_on_cw('purchase'):
+    #         catch_weight.add_to_context(self, {'cw_product_uom': self.product_id.cw_uom_id,
+    #                                            'cw_to_uom': self.product_cw_uom})
+    #     return super(PurchaseOrderLine, self)._onchange_quantity()
+
     @api.onchange('product_cw_uom_qty', 'product_cw_uom')
     def _onchange_cw_quantity(self):
+        # This function for computing price in purchase order line in the case on different uom
         if not self.product_id:
             return
         if not self.product_id._is_price_based_on_cw('purchase'):
@@ -41,15 +55,12 @@ class PurchaseOrderLine(models.Model):
             date=self.order_id.date_order and self.order_id.date_order.date(),
             uom_id=self.product_uom,
             params=params)
-
         if seller or not self.date_planned:
             self.date_planned = self._get_date_planned(seller).strftime(DEFAULT_SERVER_DATETIME_FORMAT)
-
         if not seller:
             if self.product_id.seller_ids.filtered(lambda s: s.name.id == self.partner_id.id):
                 self.price_unit = 0.0
             return
-
         price_unit = self.env['account.tax']._fix_tax_included_price_company(seller.price,
                                                                              self.product_id.supplier_taxes_id,
                                                                              self.taxes_id,
@@ -61,7 +72,6 @@ class PurchaseOrderLine(models.Model):
             price_unit = self.product_id.cw_uom_id._compute_price(price_unit, self.product_cw_uom)
         self.price_unit = price_unit
 
-
     @api.depends('product_qty', 'price_unit', 'taxes_id', 'product_cw_uom_qty')
     def _compute_amount(self):
         return super(PurchaseOrderLine, self)._compute_amount()
@@ -69,6 +79,11 @@ class PurchaseOrderLine(models.Model):
     def _prepare_compute_all_values(self):
         if not self.env.user.has_group('tis_catch_weight.group_catch_weight'):
             return super(PurchaseOrderLine, self)._prepare_compute_all_values()
+        # Hook method to returns the different argument values for the
+        # compute_all method, due to the fact that discounts mechanism
+        # is not implemented yet on the purchase orders.
+        # This method should disappear as soon as this feature is
+        # also introduced like in the sales module.
         self.ensure_one()
         if self.product_id._is_price_based_on_cw('purchase'):
             quantity = self.product_cw_uom_qty
@@ -108,6 +123,7 @@ class PurchaseOrderLine(models.Model):
     @api.multi
     @api.onchange('product_id')
     def onchange_product_id(self):
+        # Setting CW Uom on sale order line and its domain
         res = super(PurchaseOrderLine, self).onchange_product_id()
         if self.product_id._is_cw_product():
             self.product_cw_uom = self.product_id.cw_uom_id
@@ -132,6 +148,8 @@ class PurchaseOrderLine(models.Model):
 
     @api.multi
     def _prepare_stock_moves(self, picking):
+        # phase one optimised
+        # Here we are updating cw quantity and cw uom to params for creating stock move.
         res = super(PurchaseOrderLine, self)._prepare_stock_moves(picking)
         cw_qty = 0.0
         for move in self.move_ids.filtered(
@@ -168,8 +186,10 @@ class PurchaseOrderLine(models.Model):
 
     @api.multi
     def _create_or_update_picking(self):
+        # phase one optimised
         for line in self:
             if line.product_id.type in ('product', 'consu'):
+                # Prevent decreasing below received cw quantity
                 if float_compare(line.product_cw_uom_qty, line.cw_qty_received, line.product_cw_uom.rounding) < 0:
                     raise UserError(_('You cannot decrease the ordered cw quantity below the received cw quantity.\n'
                                       'Create a return first.'))

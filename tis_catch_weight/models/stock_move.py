@@ -16,14 +16,16 @@ class StockMove(models.Model):
 
     product_cw_uom = fields.Many2one('uom.uom', string='CW-UOM')
     catch_weight_ok = fields.Boolean(invisible='1', related='product_id.catch_weight_ok')
-    product_cw_uom_qty = fields.Float(string='CW Demand')
-    cw_qty_done = fields.Float(string='CW Done', compute='_cw_quantity_done_compute', inverse='_cw_quantity_done_set')
+    product_cw_uom_qty = fields.Float(string='CW Demand', digits=dp.get_precision('Product CW Unit of Measure'))
+    cw_qty_done = fields.Float(string='CW Done', compute='_cw_quantity_done_compute', inverse='_cw_quantity_done_set',
+                               digits=dp.get_precision('Product CW Unit of Measure'))
     reserved_cw_availability = fields.Float(
         'CW Quantity Reserved', compute='_compute_cw_reserved_availability',
         digits=dp.get_precision('Product CW Unit of Measure'),
         readonly=True, help='CW Quantity that has already been reserved for this move')
     cw_availability = fields.Float(
         'CW Forecasted Quantity', compute='_compute_cw_product_availability',
+        digits=dp.get_precision('Product CW Unit of Measure'),
         readonly=True, help='CW Quantity in stock that can still be reserved for this move')
     cw_product_qty = fields.Float(
         'Real CW Quantity', compute='_compute_product_cw_qty', inverse='_set_product_cw_qty',
@@ -46,6 +48,7 @@ class StockMove(models.Model):
     @api.multi
     @api.depends('move_line_ids.product_cw_uom_qty', 'move_line_ids.product_cw_uom')
     def _cw_quantity_done_compute(self):
+        # Compute cw quantity done
         for move in self:
             cw_qty_done = 0
             for move_line in move._get_move_lines():
@@ -55,22 +58,32 @@ class StockMove(models.Model):
             move.cw_qty_done = cw_qty_done
 
     def _cw_quantity_done_set(self):
+        # Move line is created from here in the case of products with no tracking.
+        # This function is the inverse function of the stock move field : cw_qty_done
         quantity_done = self[0].quantity_done
         cw_quantity_done = self[0].cw_qty_done
         for move in self:
-            move_lines = move._get_move_lines()
-            if not move_lines:
-                if quantity_done and cw_quantity_done:
-                    move_line = self.env['stock.move.line'].create(
-                        dict(move._prepare_move_line_vals(), qty_done=quantity_done, cw_qty_done=cw_quantity_done))
-                    move.write({'move_line_ids': [(4, move_line.id)]})
-            elif len(move_lines) == 1:
-                move_lines[0].qty_done = quantity_done
-                move_lines[0].cw_qty_done = cw_quantity_done
-            else:
-                raise UserError("Cannot set the done quantity from this stock move, work directly with the move lines.")
+            if move.product_id._is_cw_product():
+                move_lines = move._get_move_lines()
+                if not move_lines:
+                    if quantity_done or cw_quantity_done:
+                        move_line = self.env['stock.move.line'].create(
+                            dict(move._prepare_move_line_vals(), qty_done=quantity_done, cw_qty_done=cw_quantity_done))
+                        move.write({'move_line_ids': [(4, move_line.id)]})
+                elif len(move_lines) == 1:
+                    move_lines[0].qty_done = quantity_done
+                    move_lines[0].cw_qty_done = cw_quantity_done
+                else:
+                    raise UserError("Cannot set the done quantity from this stock move, work directly with the move lines.")
 
     def _prepare_move_line_vals(self, quantity=None, reserved_quant=None):
+        # function called to create move line vals
+        # cw quantity is taken form context
+        # The move id is named as the key of the dictionary.
+        # In the case of serial product:
+        #  1. Case of reservation of serial product, values are fetched from a list and is taken
+        #  from def move.update_cw_reserved_quantity .
+        #  2. In case of purchase we have only one quantity, and is passed form def action_assign;
         if not self.env.user.has_group('tis_catch_weight.group_catch_weight'):
             return super(StockMove, self)._prepare_move_line_vals(quantity=quantity, reserved_quant=reserved_quant)
         else:
@@ -79,11 +92,12 @@ class StockMove(models.Model):
                 cw_params = self._context.get('cw_params')
                 res.update({'product_cw_uom': self.product_cw_uom and self.product_cw_uom.id})
                 if quantity:
+                    # params = self._context.get('params')
                     if self.product_id.tracking == 'serial':
-
                         if cw_params and self.id in cw_params.keys():
+                            # serial_qty = params.get('reserved_quants_for_serial')
                             quantity_list = cw_params.get(self.id)
-                            if isinstance(quantity_list, list):
+                            if isinstance(quantity_list, list) and quantity_list:
                                 cw_quantity = quantity_list[0]
                                 quantity_list.pop(0)
                                 res.update({'product_cw_uom_qty': cw_quantity})
@@ -114,12 +128,20 @@ class StockMove(models.Model):
         self.cw_product_qty = self.product_cw_uom_qty
 
     def _set_product_cw_qty(self):
+        # The meaning of product_qty field changed lately and is now a functional field computing the quantity
+        # in the default product UoM. This code has been added to raise an error if a write is made given a value
+        # for `product_qty`, where the same write should set the `product_uom_qty` field instead, in order to
+        # detect errors.
         raise UserError(_(
-            'The requested operation cannot be processed because of a programming error setting the `cw_product_qty` field instead of the `product_cw_uom_qty`.'))
+            'The requested operation cannot be processed because of a programming error setting '
+            'the `cw_product_qty` field instead of the `product_cw_uom_qty`.'))
 
     @api.one
     @api.depends('state', 'product_id', 'product_cw_uom_qty', 'location_id')
     def _compute_cw_product_availability(self):
+        # Fill the `availability` field on a stock move, which is the quantity to potentially
+        # reserve. When the move is done, `availability` is set to the quantity the move did actually
+        # move.
         if self.state == 'done':
             self.cw_availability = self.cw_product_qty
         else:
@@ -134,7 +156,10 @@ class StockMove(models.Model):
             extra_move = self
             rounding = self.product_uom.rounding
             cw_rounding = self.product_cw_uom.rounding
+            # moves created after the picking is assigned do not have `product_uom_qty`,
+            # but we shouldn't create extra moves for them
             if float_compare(self.quantity_done, self.product_uom_qty, precision_rounding=rounding) > 0:
+                # create the extra moves
                 extra_move_quantity = float_round(
                     self.quantity_done - self.product_uom_qty,
                     precision_rounding=rounding,
@@ -150,13 +175,18 @@ class StockMove(models.Model):
                 else:
                     extra_move = extra_move._action_confirm()
 
+                # link it to some move lines. We don't need to do it for move since they should be merged.
                 if self.exists() and not self.picking_id:
                     for move_line in self.move_line_ids.filtered(lambda ml: ml.qty_done):
-                        if float_compare(move_line.qty_done, extra_move_quantity, precision_rounding=rounding) <= 0 or float_compare(move_line.cw_qty_done, extra_move_cw_quantity, precision_rounding=rounding) <= 0:
+                        if float_compare(move_line.qty_done, extra_move_quantity, precision_rounding=rounding) <= 0 or \
+                                float_compare(move_line.cw_qty_done, extra_move_cw_quantity,
+                                              precision_rounding=rounding) <= 0:
+                            # move this move line to our extra move
                             move_line.move_id = extra_move.id
                             extra_move_quantity -= move_line.qty_done
                             extra_move_cw_quantity -= move_line.cw_qty_done
                         else:
+                            # split this move line and assign the new part to our extra move
                             quantity_split = float_round(
                                 move_line.qty_done - extra_move_quantity,
                                 precision_rounding=self.product_uom.rounding,
@@ -174,6 +204,9 @@ class StockMove(models.Model):
                             extra_move_quantity -= extra_move_quantity
                         if extra_move_quantity == 0.0:
                             break
+                        # --------------------------------------------------------------#
+                        #                THE Above case to be discussed                 #
+                        # --------------------------------------------------------------#
             return extra_move
 
     def _merge_moves_fields(self):
@@ -185,7 +218,9 @@ class StockMove(models.Model):
 
     def _split(self, qty, restrict_partner_id=False):
         res = super(StockMove, self)._split(qty)
-
+        # -----------------------------------------------------------------
+        #                  this case to be tested well
+        # -----------------------------------------------------------------
         self.with_context(do_not_propagate=True, do_not_unreserve=True, rounding_method='HALF-UP').write(
             {'product_cw_uom_qty': self.cw_qty_done})
         return res
@@ -193,6 +228,7 @@ class StockMove(models.Model):
     def _prepare_extra_move_vals(self, qty):
         res = super(StockMove, self)._prepare_extra_move_vals(qty)
         if self.cw_qty_done - self.product_cw_uom_qty > 0:
+            # create the extra moves
             extra_move_cw_quantity = self.cw_qty_done - self.product_cw_uom_qty
             res.update({
                 'product_cw_uom_qty': extra_move_cw_quantity,
@@ -200,9 +236,11 @@ class StockMove(models.Model):
         return res
 
     def _prepare_move_split_vals(self, qty):
+        # We are updating the back order catch weight quantity from here(split)
         res = super(StockMove, self)._prepare_move_split_vals(qty)
         decimal_precision = self.env['decimal.precision'].precision_get('Product CW Unit of Measure')
         if float_compare(self.cw_qty_done, self.product_cw_uom_qty, precision_digits=decimal_precision) < 0:
+            # Need to do some kind of conversion here
             cw_qty_split = self.product_cw_uom._compute_quantity(self.product_cw_uom_qty - self.cw_qty_done,
                                                                  self.product_id.cw_uom_id, rounding_method='HALF-UP')
 
@@ -228,7 +266,8 @@ class StockMove(models.Model):
         for rec in self:
             if rec.product_id._is_cw_product():
                 rec.reserved_cw_availability = rec.product_id.cw_uom_id._compute_quantity(result.get(rec.id, 0.0),
-                                               rec.product_cw_uom,rounding_method='HALF-UP')
+                                                                                          rec.product_cw_uom,
+                                                                                          rounding_method='HALF-UP')
 
     def _action_assign(self):
         if not self.env.user.has_group('tis_catch_weight.group_catch_weight'):
@@ -249,6 +288,7 @@ class StockMove(models.Model):
                 if move.product_id.tracking == 'serial' and (
                         move.picking_type_id.use_create_lots or move.picking_type_id.use_existing_lots):
                     serial_quantity = missing_reserved_cw_quantity / missing_reserved_quantity
+                    # params.update({move.id: serial_quantity})
                     catch_weight.add_to_context(self, {move.id: serial_quantity})
                 else:
                     to_update = move.move_line_ids.filtered(lambda ml: ml.product_uom_id == move.product_uom and
@@ -262,17 +302,19 @@ class StockMove(models.Model):
                         to_update[0].product_cw_uom_qty += missing_reserved_cw_quantity
                     else:
                         catch_weight.add_to_context(self, {move.id: missing_reserved_cw_quantity})
+                        # params.update({move.id: missing_reserved_cw_quantity})
                         assigned_moves |= move
             else:
                 if not move.move_orig_ids:
                     if move.procure_method == 'make_to_order':
                         continue
-
+                    # If we don't need any quantity, consider the move assigned.
                     cw_need = missing_reserved_cw_quantity
                     need = missing_reserved_quantity
                     if float_is_zero(cw_need, precision_rounding=move.product_id.uom_id.rounding):
                         assigned_moves |= move
                         continue
+                    # Reserve new quants and create move lines accordingly.
                     available_cw_quantity = self.env['stock.quant']._get_available_cw_quantity(move.product_id,
                                                                                                move.location_id)
                     available_quantity = self.env['stock.quant']._get_available_quantity(move.product_id,
@@ -289,12 +331,16 @@ class StockMove(models.Model):
                     else:
                         partially_available_moves |= move
                 else:
+                    # Check what our parents brought and what our siblings took in order to
+                    # determine what we can distribute.
+                    # `qty_done` is in `ml.product_uom_id` and, as we will later increase
+                    # the reserved quantity on the quants, convert it here in
+                    # `product_id.uom_id` (the UOM of the quants is the UOM of the product).
                     move_lines_in = move.move_orig_ids.filtered(lambda m: m.state == 'done').mapped('move_line_ids')
                     keys_in_groupby = ['location_dest_id', 'lot_id', 'result_package_id', 'owner_id']
 
                     def _keys_in_sorted(ml):
                         return (ml.location_dest_id.id, ml.lot_id.id, ml.result_package_id.id, ml.owner_id.id)
-
                     grouped_move_lines_in = {}
                     for k, g in groupby(sorted(move_lines_in, key=_keys_in_sorted), key=itemgetter(*keys_in_groupby)):
                         cw_qty_done = 0
@@ -306,6 +352,8 @@ class StockMove(models.Model):
                     move_lines_out_done = (move.move_orig_ids.mapped('move_dest_ids') - move) \
                         .filtered(lambda m: m.state in ['done']) \
                         .mapped('move_line_ids')
+                    # As we defer the write on the stock.move's state at the end of the loop, there
+                    # could be moves to consider in what our siblings already took.
                     moves_out_siblings = move.move_orig_ids.mapped('move_dest_ids') - move
                     moves_out_siblings_to_consider = moves_out_siblings & (assigned_moves + partially_available_moves)
                     reserved_moves_out_siblings = moves_out_siblings.filtered(
@@ -328,17 +376,29 @@ class StockMove(models.Model):
                         grouped_move_lines_out[k] = [cw_qty_done, qty_done]
                     for k, g in groupby(sorted(move_lines_out_reserved, key=_keys_out_sorted),
                                         key=itemgetter(*keys_out_groupby)):
-                        grouped_move_lines_out[k] = sum(
+                        # grouped_move_lines_out[k] = sum(
+                        #     self.env['stock.move.line'].concat(*list(g)).mapped('cw_product_qty'))
+                        cw_product_qty = sum(
                             self.env['stock.move.line'].concat(*list(g)).mapped('cw_product_qty'))
+                        product_qty = grouped_move_lines_out[k] = sum(
+                            self.env['stock.move.line'].concat(*list(g)).mapped('product_qty'))
+                        grouped_move_lines_out[k] = [cw_product_qty, product_qty]
                     available_move_lines = {}
                     for key in grouped_move_lines_in.keys():
                         available_move_lines[key] = []
+                        # for lines_in in grouped_move_lines_in[key]:
+                        #     if grouped_move_lines_out.get(key):
+                        #         available_move_lines[key].append(lines_in - lines_out for lines_out in
+                        #                                          grouped_move_lines_out[key])
+                        #     else:
+                        #         available_move_lines[key].append(lines_in - 0)
                         for lines_in in grouped_move_lines_in[key]:
                             if grouped_move_lines_out.get(key):
-                                available_move_lines[key].append(lines_in - lines_out for lines_out in
-                                                                 grouped_move_lines_out[key])
+                                for lines_out in grouped_move_lines_out.get(key, 0):
+                                    available_move_lines[key].append(lines_in - lines_out)
                             else:
                                 available_move_lines[key].append(lines_in - 0)
+                    # pop key if the quantity available amount to 0
                     available_move_lines = dict((k, v) for k, v in available_move_lines.items() if v)
 
                     if not available_move_lines:
@@ -347,10 +407,12 @@ class StockMove(models.Model):
                         if available_move_lines.get((move_line.location_id, move_line.lot_id,
                                                      move_line.result_package_id, move_line.owner_id)):
                             available_move_lines[(
-                            move_line.location_id, move_line.lot_id, move_line.result_package_id, move_line.owner_id)][
+                                move_line.location_id, move_line.lot_id, move_line.result_package_id,
+                                move_line.owner_id)][
                                 0] -= move_line.cw_product_qty
                             available_move_lines[(
-                            move_line.location_id, move_line.lot_id, move_line.result_package_id, move_line.owner_id)][
+                                move_line.location_id, move_line.lot_id, move_line.result_package_id,
+                                move_line.owner_id)][
                                 1] -= move_line.product_qty
 
                     for (location_id, lot_id, package_id,
@@ -376,9 +438,9 @@ class StockMove(models.Model):
     def _update_reserved_cw_quantity(self, cw_need, available_cw_quantity, need, available_quantity, location_id,
                                      lot_id=None, package_id=None,
                                      owner_id=None, strict=True):
+        #  Create or update move lines.
         cw_params = self._context.get('cw_params')
         self.ensure_one()
-
         if not lot_id:
             lot_id = self.env['stock.production.lot']
         if not package_id:
@@ -392,7 +454,9 @@ class StockMove(models.Model):
 
         taken_quantity = min(available_quantity, need)
         quants = []
-
+        # if self.product_id.tracking == 'serial':
+        #     if taken_cw_quantity - int(taken_cw_quantity) != 0:
+        #         taken_cw_quantity = 0
         try:
             if not float_is_zero(taken_cw_quantity, precision_rounding=self.product_id.cw_uom_id.rounding):
                 quants = self.env['stock.quant']._update_reserved_cw_quantity(
@@ -401,6 +465,7 @@ class StockMove(models.Model):
                 )
         except UserError:
             taken_cw_quantity = 0
+        # Find a candidate move line to update or create a new one.
         serial_dict = []
         for reserved_quant, cw_quantity in quants:
             to_update = self.move_line_ids.filtered(lambda m: m.product_id.tracking != 'serial' and
@@ -419,12 +484,18 @@ class StockMove(models.Model):
                 else:
                     catch_weight.add_to_context(self, {self.id: cw_quantity})
         return taken_cw_quantity
+        # Here we are updating the reserved quantity to move line, we are giving move id as the key to the dict ,
+        # in case of dictionary we will update the values to a list.
+        # -------------------------------------------------------------#
+        # case when quantity is equal to zero!!!!!!!!!!!!  important   #
+        # -------------------------------------------------------------#
 
 
 class StockRule(models.Model):
     _inherit = 'stock.rule'
 
     def _get_stock_move_values(self, product_id, product_qty, product_uom, location_id, name, origin, values, group_id):
+        # Fetching cw values from values which is updated in prepare_procurement_values in sale order line
         result = super(StockRule, self)._get_stock_move_values(product_id, product_qty, product_uom, location_id,
                                                                name, origin, values, group_id)
         if values.get('product_cw_uom', False):

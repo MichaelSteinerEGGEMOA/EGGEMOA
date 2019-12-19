@@ -20,5 +20,6 @@ class StockImmediateTransfer(models.TransientModel):
                                     "You cannot validate a transfer if no CW quantities are reserved nor done. To force the transfer, switch in edit mode and encode the CW done quantities."))
                         move_line.cw_qty_done = move_line.product_cw_uom_qty
                     else:
-                        move_line.cw_qty_done = 0;
+                        move_line.cw_qty_done = 0
+
         return super(StockImmediateTransfer, self).process()

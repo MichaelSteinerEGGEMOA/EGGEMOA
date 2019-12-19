@@ -4,14 +4,14 @@
 from odoo.addons import decimal_precision as dp
 from odoo import api, fields, models, _
 from odoo.tools import float_utils
-from odoo.exceptions import UserError, ValidationError
+from odoo.exceptions import UserError
 
 
 class InventoryLine(models.Model):
     _inherit = "stock.inventory.line"
 
     product_cw_uom_id = fields.Many2one('uom.uom', string='CW-UOM', related='product_id.cw_uom_id', required=True)
-    product_cw_uom_category_id = fields.Many2one(string='Uom category', related='product_cw_uom_id.category_id',
+    product_cw_uom_category_id = fields.Many2one(string='CW Uom category', related='product_cw_uom_id.category_id',
                                                  readonly=True)
     cw_product_qty = fields.Float('Real CW Quantity',
                                   digits=dp.get_precision('Product CW Unit of Measure'), default=0)
@@ -37,6 +37,7 @@ class InventoryLine(models.Model):
         self.theoretical_cw_qty = theoretical_cw_qty
 
     def _get_move_values(self, qty, location_id, location_dest_id, out):
+        # When creating new inventory adjustment move vlaues are fetching from this function
         res = super(InventoryLine, self)._get_move_values(qty, location_id, location_dest_id, out)
         for line in self:
             if float_utils.float_compare(line.theoretical_cw_qty, line.cw_product_qty,
@@ -72,11 +73,12 @@ class InventoryLine(models.Model):
             })
         return res
 
-    @api.onchange('product_id', 'location_id', 'product_cw_uom', 'prod_lot_id', 'partner_id', 'package_id')
+    @api.onchange('product_id', 'location_id', 'product_cw_uom_id', 'prod_lot_id', 'partner_id', 'package_id')
     def onchange_cw_quantity_context(self):
         if self.product_id and self.location_id and self.product_id.cw_uom_id.category_id == self.product_cw_uom_id.category_id:
             self._compute_theoretical_cw_qty()
             self.cw_product_qty = self.theoretical_cw_qty
+
 
 class Inventory(models.Model):
     _inherit = "stock.inventory"
@@ -86,6 +88,7 @@ class Inventory(models.Model):
     @api.one
     @api.depends('product_id', 'line_ids.cw_product_qty')
     def _compute_total_cw_qty(self):
+        # For single product inventory, total quantity of the counted
         if self.product_id:
             self.total_cw_qty = sum(self.mapped('line_ids').mapped('cw_product_qty'))
         else:
@@ -100,16 +103,16 @@ class Inventory(models.Model):
         locations = self.env['stock.location'].search([('id', 'child_of', [self.location_id.id])])
         domain = ' location_id in %s'
         args = (tuple(locations.ids),)
-
         Product = self.env['product.product']
+        # Empty recordset of products available in stock_quants
         quant_products = self.env['product.product']
+        # Empty recordset of products to filter
         products_to_filter = self.env['product.product']
 
         # case 0: Filter on company
         if self.company_id:
             domain += ' AND company_id = %s'
             args += (self.company_id.id,)
-
         # case 1: Filter on One owner only or One product for a specific owner
         if self.partner_id:
             domain += ' AND owner_id = %s'
@@ -133,7 +136,6 @@ class Inventory(models.Model):
             domain += ' AND product_id = ANY (%s)'
             args += (categ_products.ids,)
             products_to_filter |= categ_products
-
         self.env.cr.execute("""SELECT product_id, sum(quantity) as product_qty,  sum(cw_stock_quantity) as cw_product_qty, location_id, lot_id as prod_lot_id, package_id, owner_id as partner_id
                     FROM stock_quant
                     WHERE %s
@@ -148,6 +150,7 @@ class Inventory(models.Model):
                     })
         return vals
 
+    # For giving validation in inventory adjustments
     def action_done(self):
         res = super(Inventory, self).action_done()
         for order in self:

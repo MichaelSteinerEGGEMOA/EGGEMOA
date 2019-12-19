@@ -13,6 +13,10 @@ class SaleOrder(models.Model):
 
     @api.multi
     def action_confirm(self):
+        # Set User error warning in two cases:
+        #             case 1:If you enter quantity without entering cw quantity.
+        #             case 2:If you enter cw quantity without entering quantity.
+        # These will be consider only if the product is catch weight.
         for line in self.order_line:
             if line.product_id._is_cw_product():
                 if line.product_cw_uom_qty == 0 and line.product_uom_qty != 0:
@@ -30,6 +34,8 @@ class SaleOrderLine(models.Model):
 
     @api.multi
     def write(self, values):
+        # If edit sale order line after confirming sale order, needs to edit values in moves also.
+        # 'action_launch_stock_rule will be triggered from here
         so_lines = self.env['sale.order.line']
         if 'product_cw_uom_qty' in values:
             precision = self.env['decimal.precision'].precision_get('Product CW Unit of Measure')
@@ -65,23 +71,21 @@ class SaleOrderLine(models.Model):
                 msg += _("Invoiced CW Quantity") + ": %s <br/>" % (line.cw_qty_invoiced,)
             msg += "</ul>"
             order.message_post(body=msg)
-        precision = self.env['decimal.precision'].precision_get('Product Unit of Measure')
-        if self.mapped('cw_qty_delivered') and float_compare(values['product_cw_uom_qty'],
-                                                             max(self.mapped('cw_qty_delivered')),
-                                                             precision_digits=precision) == -1:
-            raise UserError('You cannot decrease the ordered CW quantity below the delivered CW quantity.\n'
-                            'Create a return first.')
-        for line in self:
-            pickings = line.order_id.picking_ids.filtered(lambda p: p.state not in ('done', 'cancel'))
-            for picking in pickings:
-                picking.message_post("The CW quantity of %s has been updated from %d to %d in %s" %
-                                     (line.product_id.display_name, line.product_cw_uom_qty,
-                                      values['product_cw_uom_qty'], line.order_id.name))
+        precision = self.env['decimal.precision'].precision_get('Product CW Unit of Measure')
+        line_products = self.filtered(lambda l: l.product_id.type in ['product', 'consu'])
+        if line_products.mapped('cw_qty_delivered') and float_compare(values['product_cw_uom_qty'],
+                                                                   max(line_products.mapped('cw_qty_delivered')),
+                                                                   precision_digits=precision) == -1:
+            raise UserError(_('You cannot decrease the ordered CW quantity below the CW delivered quantity.\n'
+                              'Create a return first.'))
 
     @api.depends('product_uom_qty', 'discount', 'price_unit', 'tax_id', 'product_cw_uom_qty')
     def _compute_amount(self):
+        # Compute subtotal on the basis of catch weight uom if price based on cw-uom
+        # otherwise compute on the basis of uom
         if not self.env.user.has_group('tis_catch_weight.group_catch_weight'):
             return super(SaleOrderLine, self)._compute_amount()
+        # phase one optimised
         for line in self:
             price = line.price_unit * (1 - (line.discount or 0.0) / 100.0)
             if line.product_id._is_price_based_on_cw('sale'):
@@ -98,6 +102,8 @@ class SaleOrderLine(models.Model):
 
     @api.depends('cw_qty_invoiced', 'cw_qty_delivered', 'product_cw_uom_qty', 'order_id.state')
     def _get_to_invoice_cw_qty(self):
+        # Compute the cw quantity to invoice. If the invoice policy is order, the cw quantity to invoice is
+        # calculated from the ordered cw quantity. Otherwise, the cw quantity delivered is used.
         for line in self:
             if line.order_id.state in ['sale', 'done']:
                 if line.product_id.invoice_policy == 'order':
@@ -109,6 +115,10 @@ class SaleOrderLine(models.Model):
 
     @api.depends('invoice_lines.invoice_id.state', 'invoice_lines.product_cw_uom_qty')
     def _get_invoice_cw_qty(self):
+        # Compute the cw quantity invoiced. If case of a refund, the cw quantity invoiced is decreased. Note
+        # that this is the case only if the refund is generated from the SO and that is intentional: if
+        # a refund made would automatically decrease the invoiced cw quantity, then there is a risk of reinvoicing
+        # it automatically, which may not be wanted at all. That's why the refund has to be created from the SO
         for line in self:
             cw_qty_invoiced = 0.0
             for invoice_line in line.invoice_lines:
@@ -124,6 +134,7 @@ class SaleOrderLine(models.Model):
     @api.multi
     @api.depends('move_ids.state', 'move_ids.scrapped', 'move_ids.cw_qty_done', 'move_ids.product_cw_uom')
     def _compute_cw_qty_delivered(self):
+        # super(SaleOrderLine, self)._compute_qty_delivered()
         for line in self:  # TODO: maybe one day, this should be done in SQL for performance sake
             if line.qty_delivered_method == 'stock_move':
                 qty = 0.0
@@ -155,6 +166,7 @@ class SaleOrderLine(models.Model):
     @api.multi
     @api.onchange('product_id')
     def product_id_change(self):
+        # Setting CW Uom on the sale order line and setting its domain.
         res = super(SaleOrderLine, self).product_id_change()
         if self.product_id._is_cw_product():
             self.product_cw_uom = self.product_id.cw_uom_id
@@ -173,6 +185,10 @@ class SaleOrderLine(models.Model):
 
     @api.multi
     def _prepare_procurement_values(self, group_id=False):
+        # phase one optimised
+        # this function get called from '_action_launch_stock_rule' of sale order line.
+        # Here we update CW quantity for procurement
+        # def run -->  _run_pull --> _get_stock_move_values
         res = super(SaleOrderLine, self)._prepare_procurement_values(group_id)
         precision = self.env['decimal.precision'].precision_get('Product CW Unit of Measure')
         get_param = self.env['ir.config_parameter'].sudo().get_param
@@ -226,6 +242,7 @@ class SaleOrderLine(models.Model):
                     message = _('You plan to sell %s %s but you only have %s %s available in %s warehouse.') % \
                               (self.product_cw_uom_qty, self.product_cw_uom.name, product.cw_virtual_available,
                                product.cw_uom_id.name, self.order_id.warehouse_id.name)
+                    # We check if some products are available in other warehouses.
                     if (product.cw_virtual_available - self.product_id.cw_virtual_available) == -1:
                         message += _('\nThere are %s %s available across all warehouses.') % \
                                    (self.product_id.cw_virtual_available, product.cw_uom_id.name)
@@ -238,6 +255,7 @@ class SaleOrderLine(models.Model):
         return {}
 
     def _get_cw_qty_procurement(self):
+        #  Compute cw quantity
         self.ensure_one()
         cw_qty = 0.0
         for move in self.move_ids.filtered(lambda r: r.state != 'cancel'):
@@ -251,6 +269,8 @@ class SaleOrderLine(models.Model):
 
     @api.depends('price_total', 'product_uom_qty')
     def _get_price_reduce_tax(self):
+        # phase one optimised
+        # This function is used for web module to compute unit price for cw
         if not self.env.user.has_group('tis_catch_weight.group_catch_weight'):
             return super(SaleOrderLine, self)._get_price_reduce_tax()
         for line in self:
@@ -261,6 +281,8 @@ class SaleOrderLine(models.Model):
 
     @api.depends('price_subtotal', 'product_uom_qty')
     def _get_price_reduce_notax(self):
+        # phase one optimised
+        # This function is used for web module to compute unit price for cw
         if not self.env.user.has_group('tis_catch_weight.group_catch_weight'):
             return super(SaleOrderLine, self)._get_price_reduce_notax()
         for line in self:
@@ -272,6 +294,8 @@ class SaleOrderLine(models.Model):
 
     @api.onchange('product_cw_uom', 'product_cw_uom_qty')
     def cw_product_uom_change(self):
+        # Here we update the cw_uom to the context of product for price calculation
+        # we take this value form product.product def _compute_product_price
         if not self.product_id._is_price_based_on_cw('sale'):
             return
         if not self.product_uom or not self.product_id or not self.product_cw_uom:
@@ -288,13 +312,15 @@ class SaleOrderLine(models.Model):
                 fiscal_position=self.env.context.get('fiscal_position'),
                 cw_uom=self.product_cw_uom.id
             )
-
             self.price_unit = self.env['account.tax']._fix_tax_included_price_company(self._get_display_price(product),
                                                                                       product.taxes_id, self.tax_id,
                                                                                       self.company_id)
 
     @api.multi
     def _get_display_price(self, product):
+        # This function inherited for the computation of unit_price .
+        # We update the both uom to the context.
+        # Taken from the function def compute_price
         if not self.product_id._is_price_based_on_cw('sale'):
             return super(SaleOrderLine, self)._get_display_price(product)
         to_uom = self.product_cw_uom or False
@@ -306,6 +332,8 @@ class SaleOrderLine(models.Model):
 
     @api.multi
     def _check_package(self):
+        # This function is for product package, when we sale product having product package,
+        # if haven't enough qty, warning will be showing. here we  showing warning with cw qty
         if not self.env.user.has_group('tis_catch_weight.group_catch_weight'):
             return super(SaleOrderLine, self)._check_package()
         if self.product_id._is_cw_product():

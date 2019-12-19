@@ -1,12 +1,13 @@
 # -*- coding: utf-8 -*-
-# Copyright (C) 2019-Today  Technaureus Info Solutions Pvt Ltd.(<https://technaureus.com/>).
+# Copyright (C) 2019-Today  Technaureus Info Solutions Pvt. Ltd.(<https://technaureus.com/>).
 
 from odoo import models, fields, api, _
 from odoo.addons import decimal_precision as dp
 from odoo.exceptions import UserError
 from odoo.tools.float_utils import float_round
+from odoo.tools import pycompat
 import operator as py_operator
-from datetime import datetime, timedelta, time
+from datetime import datetime, timedelta
 from . import catch_weight
 
 OPERATORS = {
@@ -41,6 +42,8 @@ class ProductProduct(models.Model):
 
     @api.depends('stock_move_ids.cw_product_qty', 'stock_move_ids.state')
     def _compute_cw_quantities(self):
+        # when create a new stock move and having cw values,this function will be triggered,
+        # then write cw onhand, incoming , outgoing and forecast
         res = self._compute_quantities_dict(self._context.get('lot_id'), self._context.get('owner_id'),
                                             self._context.get('package_id'), self._context.get('from_date'),
                                             self._context.get('to_date'))
@@ -93,6 +96,8 @@ class ProductProduct(models.Model):
                              Quant.read_group(cw_domain_quant, ['product_id', 'cw_stock_quantity'], ['product_id'],
                                               orderby='id'))
         if dates_in_the_past:
+            # Calculate the moves that were done before now to calculate
+            # back in time (as most questions will be recent ones)
             cw_domain_move_in_done = [('state', '=', 'done'), ('date', '>', to_date)] + cw_domain_move_in_done
             cw_domain_move_out_done = [('state', '=', 'done'), ('date', '>', to_date)] + cw_domain_move_out_done
             cw_moves_in_res_past = dict((item['product_id'][0], item['cw_product_qty']) for item in
@@ -117,6 +122,10 @@ class ProductProduct(models.Model):
         return res
 
     def _search_cw_qty_available(self, operator, value):
+        # In the very specific case we want to retrieve products with stock available, we only need
+        # to use the quants, not the stock moves. Therefore, we bypass the usual
+        # '_search_product_cw_quantity' method and call '_search_cw_qty_available_new' instead. This
+        # allows better performances.
         if value == 0.0 and operator == '>' and not ({'from_date', 'to_date'} & set(self.env.context.keys())):
             product_ids = self._search_cw_qty_available_new(
                 operator, value, self.env.context.get('lot_id'), self.env.context.get('owner_id'),
@@ -126,6 +135,7 @@ class ProductProduct(models.Model):
         return self._search_product_cw_quantity(operator, value, 'cw_qty_available')
 
     def _search_cw_qty_available_new(self, operator, value, lot_id=False, owner_id=False, package_id=False):
+        # Optimized method which doesn't search on stock.moves, only on stock.quants.
         product_ids = set()
         domain_quant = self._get_domain_locations()[0]
         if lot_id:
@@ -191,6 +201,8 @@ class ProductProduct(models.Model):
         return theoretical_cw_quantity
 
     def _is_price_based_on_cw(self, type):
+        # Check whether the subtotal is based on cw-uom or not
+        # :param type: either `'sale'` or `'purchase'`
         if not self.env.user.has_group('tis_catch_weight.group_catch_weight'):
             return False
         if self._is_cw_product():
@@ -214,20 +226,22 @@ class ProductProduct(models.Model):
             return False
 
     def _is_cw_product(self):
+        # Checks that product is catchweight product or not
         if not self.env.user.has_group('tis_catch_weight.group_catch_weight'):
             return False
         else:
-            if self.catch_weight_ok:
+            if self.product_tmpl_id.catch_weight_ok:
                 return True
             else:
                 return False
 
     @api.multi
     def _compute_cw_sales_count(self):
+        # phase one optimised
+        # Sales product CW quantity for  product form:
         r = {}
         if not self.user_has_groups('sales_team.group_sale_salesman'):
             return r
-
         date_from = fields.Datetime.to_string(fields.datetime.now() - timedelta(days=365))
         domain = [
             ('state', 'in', ['sale', 'done']),
@@ -242,6 +256,8 @@ class ProductProduct(models.Model):
 
     @api.multi
     def _compute_purchased_product_cw_qty(self):
+        # phase one optimised
+        # Purchased product CW quantity for  product form:
         date_from = fields.Datetime.to_string(fields.datetime.now() - timedelta(days=365))
         domain = [
             ('state', 'in', ['purchase', 'done']),
@@ -257,6 +273,9 @@ class ProductProduct(models.Model):
                                                            precision_rounding=product.uom_id.rounding)
 
     def _compute_product_price(self):
+        # Here we fetch the UOM which is passed from the function def cw_product_uom_change from sale module.
+        # and we are updating the context.
+        # This value will be used in compute price for calculating unit price for the cw products
         to_uom = self.env.context.get('cw_uom', False)
         if to_uom:
             to_uom = self.env['uom.uom'].browse(to_uom)
@@ -264,6 +283,45 @@ class ProductProduct(models.Model):
                 catch_weight.add_to_context(self, {'cw_product_uom': self.cw_uom_id,
                                                    'cw_to_uom': to_uom})
         return super(ProductProduct, self)._compute_product_price()
+
+    @api.model
+    def fields_view_get(self, view_id=None, view_type='form', toolbar=False, submenu=False):
+        # change fields label based on location usage
+        res = super(ProductProduct, self).fields_view_get(view_id=view_id, view_type=view_type, toolbar=toolbar,
+                                                          submenu=submenu)
+        if self._context.get('location') and isinstance(self._context['location'], pycompat.integer_types):
+            location = self.env['stock.location'].browse(self._context['location'])
+            fields = res.get('fields')
+            if fields:
+                if location.usage == 'supplier':
+                    if fields.get('cw_virtual_available'):
+                        res['fields']['cw_virtual_available']['string'] = _('Future CW Receipts')
+                    if fields.get('cw_qty_available'):
+                        res['fields']['cw_qty_available']['string'] = _('Received CW Qty')
+                elif location.usage == 'internal':
+                    if fields.get('cw_virtual_available'):
+                        res['fields']['cw_virtual_available']['string'] = _('Forecasted CW Quantity')
+                elif location.usage == 'customer':
+                    if fields.get('cw_virtual_available'):
+                        res['fields']['cw_virtual_available']['string'] = _('Future CW Deliveries')
+                    if fields.get('cw_qty_available'):
+                        res['fields']['cw_qty_available']['string'] = _('Delivered CW Qty')
+                elif location.usage == 'inventory':
+                    if fields.get('cw_virtual_available'):
+                        res['fields']['cw_virtual_available']['string'] = _('Future CW P&L')
+                    if fields.get('cw_qty_available'):
+                        res['fields']['cw_qty_available']['string'] = _('P&L CW Qty')
+                elif location.usage == 'procurement':
+                    if fields.get('cw_virtual_available'):
+                        res['fields']['cw_virtual_available']['string'] = _('Future CW Qty')
+                    if fields.get('cw_qty_available'):
+                        res['fields']['cw_qty_available']['string'] = _('Unplanned CW Qty')
+                elif location.usage == 'production':
+                    if fields.get('cw_virtual_available'):
+                        res['fields']['cw_virtual_available']['string'] = _('Future CW Productions')
+                    if fields.get('cw_qty_available'):
+                        res['fields']['cw_qty_available']['string'] = _('Produced CW Qty')
+        return res
 
 
 class ProductTemplate(models.Model):
@@ -275,10 +333,10 @@ class ProductTemplate(models.Model):
     def get_cw_qty(self):
         return 0
 
-    cw_sales_count = fields.Float(compute='_compute_cw_sales_count', string='Sold')
+    cw_sales_count = fields.Float(compute='_compute_cw_sales_count', string='CW Sold')
     cw_purchased_product_qty = fields.Float(compute='_compute_purchased_product_cw_qty', string='CW Purchased')
     cw_uom_id = fields.Many2one('uom.uom', string="Catch Weight UOM", default=_default_cw_uom)
-    cw_uom_name = fields.Char(string='Unit of Measure Name', related='cw_uom_id.name', readonly=True)
+    cw_uom_name = fields.Char(string='CW-UOM Name', related='cw_uom_id.name', readonly=True)
     catch_weight_ok = fields.Boolean('Catch Weight Product', default=False)
     sale_price_base = fields.Selection([('uom', 'UOM'), ('cwuom', 'CW-UOM')], string="Sale Price Base")
     purchase_price_base = fields.Selection([('uom', 'UOM'), ('cwuom', 'CW-UOM')], string="Purchase Price Base")
@@ -362,6 +420,8 @@ class ProductTemplate(models.Model):
     @api.multi
     @api.depends('product_variant_ids.cw_sales_count')
     def _compute_cw_sales_count(self):
+        # phase one optimised
+        # function for fetching the sold count in product form.
         for product in self:
             product.cw_sales_count = float_round(
                 sum([p.cw_sales_count for p in product.with_context(active_test=False).product_variant_ids]),
@@ -369,6 +429,8 @@ class ProductTemplate(models.Model):
 
     @api.multi
     def _compute_purchased_product_cw_qty(self):
+        # phase one optimised
+        # Purchased product CW quantity for  product form:
         for template in self:
             template.cw_purchased_product_qty = float_round(
                 sum([p.cw_purchased_product_qty for p in template.product_variant_ids]),
