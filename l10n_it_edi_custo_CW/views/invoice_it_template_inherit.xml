@@ -5,7 +5,7 @@
         <field name="inherit_id" ref="l10n_it_edi.account_invoice_line_it_FatturaPA"/>
         <field name="arch" type="xml">
             <xpath expr="//Quantita" position="replace">
-                <Quantita t-esc="format_numbers(line.product_cw_uom_qty)"/>
+                <Quantita t-esc="format_numbers(line.product_cw_uom_qty or line.quantity)"/>
             </xpath>
 
             <!-- product_cw_uom_qty -->
