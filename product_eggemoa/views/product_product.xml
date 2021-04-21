@@ -1,0 +1,16 @@
+<?xml version='1.0' encoding='utf-8' ?>
+<odoo>
+  <data>
+    <record id="eggemoa_stock_valuation_form" model="ir.ui.view">
+      <field name="name">Eggemoa Stock valuation</field>
+      <field name="model">product.product</field>
+      <field name="inherit_id" ref="stock_account.view_stock_product_tree2" />
+      <field name="arch" type="xml">
+        <field name="uom_id" position="after">
+          <field name="secondary_qty_at_date" />
+          <field name="secondary_uom_id" />
+        </field>
+      </field>
+    </record>
+  </data>
+</odoo>
