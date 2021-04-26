@@ -7,13 +7,12 @@
       <field name="inherit_id" ref="account.invoice_form" />
       <field name="arch" type="xml">
         <field name="uom_id" position="after">
+          <field name="secondary_uom_ratio" />
           <field name="secondary_uom_quantity" />
           <field name="secondary_uom_id" />
+          <field name="secondary_uom_price_unit" />
         </field>
-        <field name="quantity" position="attributes">
-          <attribute name="invisible">1</attribute>
-        </field>
-        <field name="uom_id" position="attributes">
+        <field name="price_unit" position="attributes">
           <attribute name="invisible">1</attribute>
         </field>
       </field>

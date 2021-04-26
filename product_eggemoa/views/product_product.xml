@@ -8,7 +8,7 @@
       <field name="arch" type="xml">
         <field name="uom_id" position="after">
           <field name="secondary_qty_at_date" />
-          <field name="secondary_uom_id" />
+          <field name="valuation_display_uom_id" />
         </field>
       </field>
     </record>
