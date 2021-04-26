@@ -77,7 +77,7 @@ class AccountInvoiceLine(models.Model):
         for rec in self:
             rec.secondary_uom_ratio = (
                 rec.sale_line_ids[0].secondary_uom_ratio
-                if rec.sale_line_ids
+                if rec.sale_line_ids and rec.sale_line_ids[0].secondary_uom_ratio
                 else (
                     rec.product_id.secondary_uom_ratio
                     if rec.product_id.secondary_uom_id
@@ -90,7 +90,7 @@ class AccountInvoiceLine(models.Model):
         for rec in self:
             rec.secondary_uom_id = (
                 rec.sale_line_ids[0].secondary_uom_id
-                if rec.sale_line_ids
+                if rec.sale_line_ids and rec.sale_line_ids[0].secondary_uom_id
                 else (rec.product_id.secondary_uom_id or rec.product_id.uom_id)
             )
 
