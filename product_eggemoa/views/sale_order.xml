@@ -1,0 +1,37 @@
+<odoo>
+  <data>
+    <record id="eggemoa_sale_order_form" model="ir.ui.view">
+      <field name="name">Eggemoa Sale Order Form</field>
+      <field name="model">sale.order</field>
+      <field name="inherit_id" ref="sale.view_order_form" />
+      <field name="arch" type="xml">
+        <!-- Editing order line tree -->
+        <xpath expr="//field[@name='order_line']/tree/field[@name='price_unit']" position="after">
+          <field name="secondary_uom_id" />
+          <field name="secondary_uom_ratio" />
+          <field name="secondary_uom_qty" />
+          <field name="secondary_uom_price_unit" />
+        </xpath>
+        <xpath
+          expr="//field[@name='order_line']/tree/field[@name='price_unit']"
+          position="attributes"
+        >
+          <attribute name="invisible">1</attribute>
+        </xpath>
+        <!-- Editing order line form -->
+        <xpath expr="//field[@name='order_line']/form//field[@name='price_unit']" position="after">
+          <field name="secondary_uom_id" required="1" />
+          <field name="secondary_uom_ratio" required="1" />
+          <field name="secondary_uom_qty" required="1" />
+          <field name="secondary_uom_price_unit" required="1" />
+        </xpath>
+        <xpath
+          expr="//field[@name='order_line']/form//field[@name='price_unit']"
+          position="attributes"
+        >
+          <attribute name="invisible">1</attribute>
+        </xpath>
+      </field>
+    </record>
+  </data>
+</odoo>
