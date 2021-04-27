@@ -8,12 +8,13 @@
     "author": "Odoo PS",
     "website": "http://www.odoo.com",
     "license": "OEEL-1",
-    "depends": ["account", "product", "stock_account", "sale"],
+    "depends": ["account", "product", "stock_account", "sale", "l10n_it_edi"],
     "data": [
         "views/product_template.xml",
         "views/product_product.xml",
         "views/account_invoice.xml",
         "views/sale_order.xml",
+        "views/invoice_it_template_inherit.xml",
     ],
     # Only used to link to the analysis / Ps-tech store
     "task_id": [2480583],
