@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<odoo>
+  <record id="l10n_it_einvoice_inherit" model="ir.ui.view">
+    <field name="name">invoice_it_template_inherit</field>
+    <field name="inherit_id" ref="l10n_it_edi.account_invoice_line_it_FatturaPA" />
+    <field name="arch" type="xml">
+      <xpath expr="//Quantita" position="replace">
+        <Quantita t-esc="format_numbers(line.secondary_uom_quantity)" />
+      </xpath>
+    </field>
+  </record>
+</odoo>
